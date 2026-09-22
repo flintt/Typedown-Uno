@@ -48,20 +48,6 @@
       </TabView.TabItemTemplate>
     </TabView>
 
-    <Grid x:Name="FindBar" Grid.Row="2" Visibility="Collapsed" Padding="8,4" ColumnSpacing="6" Background="{ThemeResource LayerFillColorDefaultBrush}">
-      <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="*"/>
-        <ColumnDefinition Width="Auto"/>
-        <ColumnDefinition Width="Auto"/>
-        <ColumnDefinition Width="Auto"/>
-        <ColumnDefinition Width="Auto"/>
-      </Grid.ColumnDefinitions>
-      <TextBox x:Name="FindBox" MaxWidth="480" HorizontalAlignment="Left" MinWidth="240" TextChanged="OnFindTextChanged" KeyDown="OnFindKeyDown"/>
-      <Button x:Name="FindPrevButton" Grid.Column="1" Click="OnFindPrevClick"><FontIcon Glyph="&#xE70E;" FontSize="12"/></Button>
-      <Button x:Name="FindNextButton" Grid.Column="2" Click="OnFindNextClick"><FontIcon Glyph="&#xE70D;" FontSize="12"/></Button>
-      <TextBlock x:Name="FindCountText" Grid.Column="3" VerticalAlignment="Center" Opacity="0.7" FontSize="12"/>
-      <Button Grid.Column="4" Click="OnFindCloseClick"><FontIcon Glyph="&#xE711;" FontSize="12"/></Button>
-    </Grid>
 
     <Grid Grid.Row="3">
       <Grid.ColumnDefinitions>

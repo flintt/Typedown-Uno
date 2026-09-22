@@ -357,7 +357,6 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             case (",", true, false): await ShowSettingsAsync(); break;
             case ("tab", true, false): await tabs.SwitchRelativeAsync(1); break;
             case ("tab", true, true): await tabs.SwitchRelativeAsync(-1); break;
-            case ("escape", false, false): if (FindBar.Visibility == Visibility.Visible) ShowFind(false); break;
         }
     }
 
@@ -490,40 +489,9 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         if (tabs != null) await tabs.NewTabAsync();
     }
 
-    // ---- find bar ------------------------------------------------------------------------------------------------
+    // ---- find (the bar itself lives in the page: uno-bridge.js) ------------------------------------------------
 
-    private void ShowFind(bool show, string? text = null)
-    {
-        FindBar.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        if (show)
-        {
-            if (text != null) FindBox.Text = text;
-            FindBox.Focus(FocusState.Programmatic);
-            FindBox.SelectAll();
-            _ = Post("SearchOpenChange", new { open = 1 });
-            if (FindBox.Text.Length > 0) _ = PostSearch();
-        }
-        else
-        {
-            _ = Post("Search", new { value = "", opt = SearchOptions() });
-            _ = Post("SearchOpenChange", new { open = 0 });
-        }
-    }
-
-    private static object SearchOptions() => new { searchIsCaseSensitive = false, searchIsWholeWord = false, searchIsRegexp = false, selection = (object?)null };
-
-    private Task PostSearch() => Post("Search", new { value = FindBox.Text, opt = SearchOptions() });
-
-    private async void OnFindTextChanged(object sender, TextChangedEventArgs e) => await PostSearch();
-    private async void OnFindPrevClick(object sender, RoutedEventArgs e) => await Post("Find", new { action = "prev" });
-    private async void OnFindNextClick(object sender, RoutedEventArgs e) => await Post("Find", new { action = "next" });
-    private void OnFindCloseClick(object sender, RoutedEventArgs e) => ShowFind(false);
-
-    private async void OnFindKeyDown(object sender, KeyRoutedEventArgs e)
-    {
-        if (e.Key == VirtualKey.Enter) { e.Handled = true; await Post("Find", new { action = "next" }); }
-        else if (e.Key == VirtualKey.Escape) { e.Handled = true; ShowFind(false); }
-    }
+    private void ShowFind(bool show, string? text = null) => _ = show ? Post("ShowFind", new { value = text }) : Post("HideFind", null);
 
     // ---- side pane, theme, settings -----------------------------------------------------------------------------------
 
@@ -561,7 +529,8 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     {
         var name = settings.Theme == AppTheme.Black ? "Black" : IsDarkTheme ? "Dark" : "Light";
         var bg = name switch { "Black" => (0, 0, 0), "Dark" => (32, 32, 32), _ => (249, 249, 249) };
-        return new { theme = name, accentColor = new { r = 0, g = 120, b = 212, a = 1 }, background = new { R = bg.Item1, G = bg.Item2, B = bg.Item3, A = 1 } };
+        // Dictionary keys keep their case (the editor reads background.R/G/B/A but accentColor.r/g/b/a).
+        return new { theme = name, accentColor = new { r = 0, g = 120, b = 212, a = 1 }, background = new Dictionary<string, int> { ["R"] = bg.Item1, ["G"] = bg.Item2, ["B"] = bg.Item3, ["A"] = 1 } };
     }
 
     private void ApplyTheme(bool post)
@@ -599,12 +568,13 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         SearchToggle.Content = Loc.Get("Search");
         SearchBox.PlaceholderText = Loc.Get("SearchPlaceholder");
         OpenFolderButton.Content = Loc.Get("OpenFolder");
-        FindBox.PlaceholderText = Loc.Get("FindPlaceholder");
     }
+
+    private ElementTheme DialogTheme => settings.Theme == AppTheme.System ? ElementTheme.Default : IsDarkTheme ? ElementTheme.Dark : ElementTheme.Light;
 
     private async Task ShowSettingsAsync()
     {
-        var dialog = new SettingsDialog(settings) { XamlRoot = XamlRoot };
+        var dialog = new SettingsDialog(settings) { XamlRoot = XamlRoot, RequestedTheme = DialogTheme };
         await dialog.ShowAsync();
     }
 
@@ -612,7 +582,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     {
         var rows = new NumberBox { Header = "Rows", Value = 3, Minimum = 1, Maximum = 50, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Inline };
         var cols = new NumberBox { Header = "Columns", Value = 3, Minimum = 1, Maximum = 20, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Inline };
-        var dialog = new ContentDialog { Title = Loc.Get("Table"), Content = new StackPanel { Spacing = 8, Children = { rows, cols } }, PrimaryButtonText = Loc.Get("OK"), CloseButtonText = Loc.Get("Cancel"), XamlRoot = XamlRoot };
+        var dialog = new ContentDialog { Title = Loc.Get("Table"), Content = new StackPanel { Spacing = 8, Children = { rows, cols } }, PrimaryButtonText = Loc.Get("OK"), CloseButtonText = Loc.Get("Cancel"), XamlRoot = XamlRoot, RequestedTheme = DialogTheme };
         if (await dialog.ShowAsync() == ContentDialogResult.Primary)
             await Post("InsertTable", new { rows = (int)rows.Value, columns = (int)cols.Value });
     }
@@ -646,7 +616,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             panel.Children.Add(new TextBlock { Text = Loc.Get("EditLink") });
             panel.Children.Add(new TextBox { Text = result.NoteUrl, IsReadOnly = true });
             if (result.PublishedUrl == null) panel.Children.Add(new TextBlock { Text = Loc.Get("EditableWarning"), Opacity = 0.7, TextWrapping = TextWrapping.Wrap });
-            var dialog = new ContentDialog { Title = Loc.Get("Shared"), Content = panel, PrimaryButtonText = Loc.Get("CopyLink"), SecondaryButtonText = Loc.Get("OpenInBrowser"), CloseButtonText = Loc.Get("Close"), XamlRoot = XamlRoot };
+            var dialog = new ContentDialog { Title = Loc.Get("Shared"), Content = panel, PrimaryButtonText = Loc.Get("CopyLink"), SecondaryButtonText = Loc.Get("OpenInBrowser"), CloseButtonText = Loc.Get("Close"), XamlRoot = XamlRoot, RequestedTheme = DialogTheme };
             var choice = await dialog.ShowAsync();
             if (choice == ContentDialogResult.Primary) { var p = new DataPackage(); p.SetText(result.ShareUrl); Clipboard.SetContent(p); }
             else if (choice == ContentDialogResult.Secondary) await Launcher.LaunchUriAsync(new Uri(result.ShareUrl));
@@ -741,7 +711,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             SecondaryButtonText = Loc.Get("DontSave"),
             CloseButtonText = Loc.Get("Cancel"),
             DefaultButton = ContentDialogButton.Primary,
-            XamlRoot = XamlRoot,
+            XamlRoot = XamlRoot, RequestedTheme = DialogTheme,
         };
         return await dialog.ShowAsync() switch
         {
@@ -753,13 +723,13 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
 
     public async Task<bool> ConfirmAsync(string title, string message, string yes, string no)
     {
-        var dialog = new ContentDialog { Title = title, Content = message, PrimaryButtonText = yes, CloseButtonText = no, XamlRoot = XamlRoot };
+        var dialog = new ContentDialog { Title = title, Content = message, PrimaryButtonText = yes, CloseButtonText = no, XamlRoot = XamlRoot, RequestedTheme = DialogTheme };
         return await dialog.ShowAsync() == ContentDialogResult.Primary;
     }
 
     public async Task ShowErrorAsync(string title, string message)
     {
-        var dialog = new ContentDialog { Title = title, Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap }, CloseButtonText = Loc.Get("OK"), XamlRoot = XamlRoot };
+        var dialog = new ContentDialog { Title = title, Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap }, CloseButtonText = Loc.Get("OK"), XamlRoot = XamlRoot, RequestedTheme = DialogTheme };
         await dialog.ShowAsync();
     }
 }
