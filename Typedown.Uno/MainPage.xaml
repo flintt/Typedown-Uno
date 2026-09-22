@@ -1,17 +1,15 @@
-﻿<Page x:Class="Typedown.Uno.MainPage"
+<Page x:Class="Typedown.Uno.MainPage"
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       xmlns:local="using:Typedown.Uno"
       Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
-  <ScrollViewer IsTabStop="True">
-    <Grid>
-      <StackPanel
-        HorizontalAlignment="Center"
-        VerticalAlignment="Center">
-        <TextBlock AutomationProperties.AutomationId="HelloTextBlock"
-          Text="Hello Uno Platform!"
-          HorizontalAlignment="Center" />
-      </StackPanel>
-    </Grid>
-  </ScrollViewer>
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+    <!-- M1: the Typedown editor (React/Muya) hosted in a WebView2; the host bridge lives in Assets/Editor/uno-bridge.js -->
+    <WebView2 x:Name="EditorView" Grid.Row="0"/>
+    <TextBlock x:Name="StatusText" Grid.Row="1" Margin="8,4" FontSize="12" Opacity="0.7" Text="starting editor…"/>
+  </Grid>
 </Page>

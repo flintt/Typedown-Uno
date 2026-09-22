@@ -490,3 +490,6 @@ $RECYCLE.BIN/
 solution-config.props
 # Publish Profiles
 !**/Properties/PublishProfiles/*.pubxml
+# editor build output is large; keep the committed copy but never the bin/obj
+bin/
+obj/
