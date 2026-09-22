@@ -6,9 +6,9 @@ using Typedown.Uno.Services;
 namespace Typedown.Uno.ViewModels;
 
 /// <summary>
-/// One document in the editor (ported from Typedown's FileViewModel/EditorViewModel, single document for M2):
-/// path, content, saved state, load handshake, caret/scroll memory, external change detection, atomic save.
-/// UI interactions (pickers, dialogs) are injected so the view model stays platform-neutral.
+/// The live document in the editor (ported from Typedown's FileViewModel/EditorViewModel): path, content, saved
+/// state, load handshake, caret/scroll memory, external change detection, atomic save. Tabs snapshot and restore
+/// this state (<see cref="Capture"/>/<see cref="Restore"/>). UI interactions are injected through <see cref="IHostUi"/>.
 /// </summary>
 public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
 {
@@ -27,14 +27,19 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
 
     private readonly EditorTransport transport;
     private readonly IHostUi ui;
+    private readonly AppSettings settings;
     private FileSystemWatcher? watcher;
     private DateTime lastWatcherEvent;
     private bool handlingExternalChange;
+    private CancellationTokenSource? autoSaveCts;
 
     public event PropertyChangedEventHandler? PropertyChanged;
+    /// <summary>Raised after a file was opened (path, preview); the shell updates recent files / the tree root.</summary>
+    public event Action<string>? FileOpened;
+    public event Action<Func<Task>>? RunOnUi;
 
     private string? filePath;
-    public string? FilePath { get => filePath; private set { filePath = value; OnPropertyChanged(); OnPropertyChanged(nameof(Title)); } }
+    public string? FilePath { get => filePath; private set { filePath = value; OnPropertyChanged(); OnPropertyChanged(nameof(Title)); OnPropertyChanged(nameof(FileName)); } }
 
     private bool saved = true;
     public bool Saved { get => saved; private set { if (saved == value) return; saved = value; OnPropertyChanged(); OnPropertyChanged(nameof(Title)); } }
@@ -42,21 +47,24 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
     public string Markdown { get; private set; } = DefaultMarkdown;
     public ulong FileHash { get; private set; } = SafeFile.Hash(DefaultMarkdown);
     public ulong CurrentHash { get; private set; } = SafeFile.Hash(DefaultMarkdown);
-    /// <summary>Hash of the raw bytes-as-text last seen on disk; the editor's normalized text can differ from it.</summary>
+    /// <summary>Hash of the raw text last seen on disk; the editor's normalized text can differ from it.</summary>
     public ulong DiskHash { get; private set; }
     public bool FileLoaded { get; private set; }
     public int LoadId { get; private set; }
+    public JsonNode? Cursor { get; private set; }
+    public double? ScrollTop { get; private set; }
     /// <summary>False until the editor page asked for its settings; before that content is only staged for GetSettings.</summary>
     public bool EditorReady { get; set; }
-    public bool RememberPosition { get; set; } = true;
 
-    public string FileName => FilePath == null ? "Untitled" : Path.GetFileName(FilePath);
+    public string FileName => FilePath == null ? Loc.Get("Untitled") : Path.GetFileName(FilePath);
     public string Title => (Saved ? "" : "• ") + FileName + " - Typedown";
+    public bool IsBlank => FilePath == null && Saved && CurrentHash == SafeFile.Hash(DefaultMarkdown);
 
-    public DocumentViewModel(EditorTransport transport, IHostUi ui)
+    public DocumentViewModel(EditorTransport transport, IHostUi ui, AppSettings settings)
     {
         this.transport = transport;
         this.ui = ui;
+        this.settings = settings;
         transport.MessageReceived += OnEditorMessage;
     }
 
@@ -86,88 +94,142 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
                 Markdown = args?["text"]?.GetValue<string>() ?? Markdown;
                 CurrentHash = SafeFile.Hash(Markdown);
                 Saved = FileHash == CurrentHash;
+                if (!Saved && settings.AutoSave && FilePath != null) ScheduleAutoSave();
                 break;
             case "CursorChange":
                 if (IsStale(args) || !FileLoaded) return;
-                if (RememberPosition) CursorMemory.SetCursor(FilePath, args?["cursor"]);
+                Cursor = args?["cursor"]?.DeepClone();
+                if (settings.RememberPosition) CursorMemory.SetCursor(FilePath, Cursor);
                 break;
             case "OnScroll":
                 if (!FileLoaded) return;
                 var y = args?["scrollY"]?.GetValue<double?>();
-                if (y != null && RememberPosition) CursorMemory.SetScroll(FilePath, y.Value);
+                if (y == null) return;
+                ScrollTop = y;
+                if (settings.RememberPosition) CursorMemory.SetScroll(FilePath, y.Value);
                 break;
         }
     }
 
+    private void ScheduleAutoSave()
+    {
+        autoSaveCts?.Cancel();
+        var cts = autoSaveCts = new CancellationTokenSource();
+        _ = Task.Delay(1500, cts.Token).ContinueWith(t =>
+        {
+            if (t.IsCanceled) return;
+            RunOnUi?.Invoke(async () => { if (!Saved && FilePath != null) await WriteAsync(FilePath, quiet: true); });
+        }, TaskScheduler.Default);
+    }
+
     // ---- content into the editor ---------------------------------------------------------------------------
 
-    private Task PostLoadFile(string text)
+    private Task PostLoadFile(string text, JsonNode? cursor = null, double? scrollTop = null)
     {
         FileLoaded = false;
         if (!EditorReady) return Task.CompletedTask; // the initial GetSettings reply carries the document
         return transport.PostMessage("LoadFile", new
         {
             text,
-            basePath = FilePath == null ? Environment.CurrentDirectory : Path.GetDirectoryName(FilePath),
-            cursor = RememberPosition ? CursorMemory.GetCursor(FilePath) : null,
-            scrollTop = RememberPosition ? CursorMemory.GetScroll(FilePath) : null,
+            basePath = BasePath,
+            cursor = cursor ?? (settings.RememberPosition ? CursorMemory.GetCursor(FilePath) : null),
+            scrollTop = scrollTop ?? (settings.RememberPosition ? CursorMemory.GetScroll(FilePath) : null),
             loadId = ++LoadId,
         });
     }
 
+    public string BasePath => FilePath == null ? Environment.CurrentDirectory : Path.GetDirectoryName(FilePath)!;
+
     /// <summary>Payload part for the editor's initial GetSettings call.</summary>
-    public object GetLoadPayload() => new
+    public object GetLoadPayload()
     {
-        markdown = Markdown,
-        basePath = FilePath == null ? Environment.CurrentDirectory : Path.GetDirectoryName(FilePath),
-        cursor = RememberPosition ? CursorMemory.GetCursor(FilePath) : null,
-        scrollTop = RememberPosition ? CursorMemory.GetScroll(FilePath) : null,
-        loadId = ++LoadId,
-    };
+        FileLoaded = false;
+        return new
+        {
+            markdown = Markdown,
+            basePath = BasePath,
+            cursor = settings.RememberPosition ? CursorMemory.GetCursor(FilePath) : null,
+            scrollTop = settings.RememberPosition ? CursorMemory.GetScroll(FilePath) : null,
+            loadId = ++LoadId,
+        };
+    }
+
+    // ---- tabs: snapshot / restore ------------------------------------------------------------------------------
+
+    public void Capture(DocumentTab tab)
+    {
+        tab.FilePath = FilePath;
+        tab.Markdown = Markdown;
+        tab.FileHash = FileHash;
+        tab.CurrentHash = CurrentHash;
+        tab.DiskHash = DiskHash;
+        tab.Saved = Saved;
+        tab.FileLoaded = FileLoaded;
+        tab.Cursor = Cursor;
+        tab.ScrollTop = ScrollTop;
+        tab.IsDirty = !Saved;
+    }
+
+    public async Task Restore(DocumentTab tab)
+    {
+        StopWatching();
+        FilePath = tab.FilePath;
+        Markdown = tab.Markdown;
+        FileHash = tab.FileHash;
+        CurrentHash = tab.CurrentHash;
+        DiskHash = tab.DiskHash;
+        Saved = tab.Saved;
+        Cursor = tab.Cursor;
+        ScrollTop = tab.ScrollTop;
+        // A tab shown before keeps its baseline (the handshake must not reset it); one loaded in the background
+        // has never been through the editor and still needs it — PostLoadFile clears FileLoaded, so re-set after.
+        await PostLoadFile(Markdown, tab.Cursor, tab.ScrollTop);
+        FileLoaded = tab.FileLoaded;
+        StartWatching();
+        await CheckExternalChangeAsync();
+    }
 
     // ---- commands ---------------------------------------------------------------------------------------------
 
-    public async Task<bool> NewAsync()
+    /// <summary>Makes the live document an empty untitled one (the caller decides about tabs / saving).</summary>
+    public async Task ResetToUntitledAsync()
     {
-        if (!await AskToSaveAsync()) return false;
         StopWatching();
         FilePath = null;
         Markdown = DefaultMarkdown;
         FileHash = CurrentHash = SafeFile.Hash(DefaultMarkdown);
         DiskHash = 0;
+        Cursor = null;
+        ScrollTop = null;
         Saved = true;
         await PostLoadFile(Markdown);
-        return true;
     }
 
-    public async Task<bool> OpenAsync(string? path = null)
-    {
-        path ??= await ui.PickOpenFileAsync();
-        if (path == null) return false;
-        return await LoadAsync(path);
-    }
+    public Task<string?> PickOpenAsync() => ui.PickOpenFileAsync();
 
-    /// <summary>Reads the file and hands it to the editor; the saved baseline comes back through FileLoaded.</summary>
-    public async Task<bool> LoadAsync(string path, bool skipSavedCheck = false)
+    /// <summary>Reads the file into the live document; the saved baseline comes back through FileLoaded.</summary>
+    public async Task<bool> LoadAsync(string path)
     {
         try
         {
-            if (!skipSavedCheck && !await AskToSaveAsync()) return false;
-            if (!File.Exists(path)) throw new FileNotFoundException("File does not exist.", path);
+            if (!File.Exists(path)) throw new FileNotFoundException(Loc.Get("CannotOpen"), path);
             var text = await File.ReadAllTextAsync(path);
             StopWatching();
             FilePath = Path.GetFullPath(path);
             Markdown = text;
             FileHash = CurrentHash = SafeFile.Hash(text);
             DiskHash = FileHash;
+            Cursor = null;
+            ScrollTop = null;
             Saved = true;
             await PostLoadFile(text);
             StartWatching();
+            FileOpened?.Invoke(FilePath);
             return true;
         }
         catch (Exception ex)
         {
-            await ui.ShowErrorAsync("Cannot open file", ex.Message);
+            await ui.ShowErrorAsync(Loc.Get("CannotOpen"), ex.Message);
             return false;
         }
     }
@@ -180,16 +242,17 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
 
     public async Task<bool> SaveAsAsync()
     {
-        var path = await ui.PickSaveFileAsync(FilePath == null ? "Untitled.md" : Path.GetFileName(FilePath));
+        var path = await ui.PickSaveFileAsync(FilePath == null ? Loc.Get("Untitled") + ".md" : Path.GetFileName(FilePath));
         if (path == null) return false;
         StopWatching();
         FilePath = Path.GetFullPath(path);
         var ok = await WriteAsync(FilePath);
         StartWatching();
+        if (ok) FileOpened?.Invoke(FilePath);
         return ok;
     }
 
-    private async Task<bool> WriteAsync(string path)
+    private async Task<bool> WriteAsync(string path, bool quiet = false)
     {
         try
         {
@@ -205,7 +268,7 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
         }
         catch (Exception ex)
         {
-            await ui.ShowErrorAsync("Cannot save file", ex.Message);
+            if (!quiet) await ui.ShowErrorAsync(Loc.Get("CannotSave"), ex.Message);
             return false;
         }
         finally
@@ -215,10 +278,11 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    /// <summary>Asks about unsaved changes; true when the caller may proceed (saved, discarded, or nothing to save).</summary>
+    /// <summary>Asks about unsaved changes; true when the caller may proceed.</summary>
     public async Task<bool> AskToSaveAsync()
     {
         if (Saved) return true;
+        if (settings.AutoSave && FilePath != null && await WriteAsync(FilePath, quiet: true)) return true;
         switch (await ui.AskSaveAsync(FileName))
         {
             case AskResult.Yes: return await SaveAsync();
@@ -255,22 +319,19 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
         watcher = null;
     }
 
-    public event Action<Func<Task>>? RunOnUi;
-
     private void OnFileEvent(object sender, FileSystemEventArgs e)
     {
         if (handlingExternalChange || (DateTime.UtcNow - lastWatcherEvent).TotalMilliseconds < 500) return;
         lastWatcherEvent = DateTime.UtcNow;
-        RunOnUi?.Invoke(HandleExternalChangeAsync);
+        RunOnUi?.Invoke(async () => { await Task.Delay(200); await CheckExternalChangeAsync(); });
     }
 
-    private async Task HandleExternalChangeAsync()
+    public async Task CheckExternalChangeAsync()
     {
         if (FilePath == null || handlingExternalChange) return;
         handlingExternalChange = true;
         try
         {
-            await Task.Delay(200); // let the writer finish
             if (!File.Exists(FilePath)) return;
             string text;
             try { text = await File.ReadAllTextAsync(FilePath); } catch { return; }
@@ -281,7 +342,7 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
                 await ApplyDiskTextAsync(text);
                 return;
             }
-            var reload = await ui.ConfirmAsync("File changed on disk", $"{FileName} was modified outside Typedown. Reload it and lose your unsaved changes?", "Reload", "Keep mine");
+            var reload = await ui.ConfirmAsync(Loc.Get("FileChanged"), Loc.Format("ReloadPrompt", FileName), Loc.Get("Reload"), Loc.Get("KeepMine"));
             if (reload) await ApplyDiskTextAsync(text);
             else DiskHash = diskHash;
         }
@@ -297,7 +358,7 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
         FileHash = CurrentHash = SafeFile.Hash(text);
         DiskHash = FileHash;
         Saved = true;
-        await PostLoadFile(text);
+        await PostLoadFile(text, Cursor, ScrollTop);
     }
 
     private void OnPropertyChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));

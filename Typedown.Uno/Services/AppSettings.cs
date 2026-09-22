@@ -1,0 +1,204 @@
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace Typedown.Uno.Services;
+
+public enum AppTheme { System, Light, Dark, Black }
+
+/// <summary>
+/// User settings, persisted as JSON under the app data folder. Changing a property raises PropertyChanged and
+/// schedules a save; the editor-facing subset is pushed to the WebView through "SettingsChanged".
+/// </summary>
+public sealed class AppSettings : INotifyPropertyChanged
+{
+    private static readonly string StorePath = Path.Combine(CursorMemory.DataFolder, "settings.json");
+    private static readonly JsonSerializerOptions Json = new() { WriteIndented = true, DefaultIgnoreCondition = JsonIgnoreCondition.Never };
+
+    public static AppSettings Current { get; } = Load();
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    // ---- appearance ----
+    private AppTheme theme = AppTheme.System;
+    public AppTheme Theme { get => theme; set => Set(ref theme, value); }
+
+    private string language = "";
+    /// <summary>"" = follow the system, otherwise "zh-Hans" / "en".</summary>
+    public string Language { get => language; set => Set(ref language, value); }
+
+    private bool sidePaneOpen;
+    public bool SidePaneOpen { get => sidePaneOpen; set => Set(ref sidePaneOpen, value); }
+
+    private double sidePaneWidth = 260;
+    public double SidePaneWidth { get => sidePaneWidth; set => Set(ref sidePaneWidth, value); }
+
+    private int sidePanePage;
+    public int SidePanePage { get => sidePanePage; set => Set(ref sidePanePage, value); }
+
+    private bool alwaysShowTabBar;
+    public bool AlwaysShowTabBar { get => alwaysShowTabBar; set => Set(ref alwaysShowTabBar, value); }
+
+    // ---- editor (names match the editor's option keys) ----
+    private int fontSize = 16;
+    [EditorOption] public int FontSize { get => fontSize; set => Set(ref fontSize, value); }
+
+    private double lineHeight = 1.6;
+    [EditorOption] public double LineHeight { get => lineHeight; set => Set(ref lineHeight, value); }
+
+    private string editorAreaWidth = "1200px";
+    [EditorOption] public string EditorAreaWidth { get => editorAreaWidth; set => Set(ref editorAreaWidth, value); }
+
+    private string fontFamily = "";
+    [EditorOption] public string FontFamily { get => fontFamily; set => Set(ref fontFamily, value); }
+
+    private int tabSize = 4;
+    [EditorOption] public int TabSize { get => tabSize; set => Set(ref tabSize, value); }
+
+    private string textDirection = "auto";
+    [EditorOption] public string TextDirection { get => textDirection; set => Set(ref textDirection, value); }
+
+    private bool sourceCode;
+    [EditorOption] public bool SourceCode { get => sourceCode; set => Set(ref sourceCode, value); }
+
+    private bool focusMode;
+    [EditorOption] public bool FocusMode { get => focusMode; set => Set(ref focusMode, value); }
+
+    private bool typewriter;
+    [EditorOption] public bool Typewriter { get => typewriter; set => Set(ref typewriter, value); }
+
+    private bool readOnly;
+    [EditorOption] public bool ReadOnly { get => readOnly; set => Set(ref readOnly, value); }
+
+    private bool showParagraphMarker = true;
+    [EditorOption] public bool ShowParagraphMarker { get => showParagraphMarker; set => Set(ref showParagraphMarker, value); }
+
+    private bool spellcheckEnabled;
+    [EditorOption] public bool SpellcheckEnabled { get => spellcheckEnabled; set => Set(ref spellcheckEnabled, value); }
+
+    private bool autoPairBracket = true;
+    [EditorOption] public bool AutoPairBracket { get => autoPairBracket; set => Set(ref autoPairBracket, value); }
+
+    private bool autoPairQuote = true;
+    [EditorOption] public bool AutoPairQuote { get => autoPairQuote; set => Set(ref autoPairQuote, value); }
+
+    private bool autoPairMarkdownSyntax = true;
+    [EditorOption] public bool AutoPairMarkdownSyntax { get => autoPairMarkdownSyntax; set => Set(ref autoPairMarkdownSyntax, value); }
+
+    private bool trimUnnecessaryCodeBlockEmptyLines = true;
+    [EditorOption] public bool TrimUnnecessaryCodeBlockEmptyLines { get => trimUnnecessaryCodeBlockEmptyLines; set => Set(ref trimUnnecessaryCodeBlockEmptyLines, value); }
+
+    private bool preferLooseListItem = true;
+    [EditorOption] public bool PreferLooseListItem { get => preferLooseListItem; set => Set(ref preferLooseListItem, value); }
+
+    private string listIndentation = "1";
+    [EditorOption] public string ListIndentation { get => listIndentation; set => Set(ref listIndentation, value); }
+
+    private bool tableAlignColumns = true;
+    [EditorOption] public bool TableAlignColumns { get => tableAlignColumns; set => Set(ref tableAlignColumns, value); }
+
+    private string customCss = "";
+    [EditorOption] public string CustomCss { get => customCss; set => Set(ref customCss, value); }
+
+    // ---- files ----
+    private bool autoSave;
+    public bool AutoSave { get => autoSave; set => Set(ref autoSave, value); }
+
+    private bool rememberPosition = true;
+    public bool RememberPosition { get => rememberPosition; set => Set(ref rememberPosition, value); }
+
+    private bool restoreSession = true;
+    public bool RestoreSession { get => restoreSession; set => Set(ref restoreSession, value); }
+
+    private string? lastFolder;
+    public string? LastFolder { get => lastFolder; set => Set(ref lastFolder, value); }
+
+    private List<string> recentFiles = new();
+    public List<string> RecentFiles { get => recentFiles; set => Set(ref recentFiles, value); }
+
+    // ---- HedgeDoc ----
+    private string hedgeDocServer = "";
+    public string HedgeDocServer { get => hedgeDocServer; set => Set(ref hedgeDocServer, value); }
+
+    private string hedgeDocEmail = "";
+    public string HedgeDocEmail { get => hedgeDocEmail; set => Set(ref hedgeDocEmail, value); }
+
+    private string hedgeDocPassword = "";
+    public string HedgeDocPassword { get => hedgeDocPassword; set => Set(ref hedgeDocPassword, value); }
+
+    private bool hedgeDocPublishReadOnly = true;
+    public bool HedgeDocPublishReadOnly { get => hedgeDocPublishReadOnly; set => Set(ref hedgeDocPublishReadOnly, value); }
+
+    // ---- window ----
+    private double windowWidth = 1130, windowHeight = 700;
+    public double WindowWidth { get => windowWidth; set => Set(ref windowWidth, value); }
+    public double WindowHeight { get => windowHeight; set => Set(ref windowHeight, value); }
+
+    public void AddRecent(string path)
+    {
+        var list = RecentFiles.Where(p => !string.Equals(p, path, StringComparison.OrdinalIgnoreCase)).ToList();
+        list.Insert(0, path);
+        RecentFiles = list.Take(15).ToList();
+    }
+
+    /// <summary>The camelCase option object the editor expects in GetSettings.</summary>
+    public Dictionary<string, object?> EditorOptions()
+    {
+        var dict = new Dictionary<string, object?>();
+        foreach (var p in typeof(AppSettings).GetProperties())
+            if (Attribute.IsDefined(p, typeof(EditorOptionAttribute)))
+                dict[char.ToLowerInvariant(p.Name[0]) + p.Name[1..]] = p.GetValue(this);
+        return dict;
+    }
+
+    public static bool IsEditorOption(string propertyName) =>
+        typeof(AppSettings).GetProperty(propertyName) is { } p && Attribute.IsDefined(p, typeof(EditorOptionAttribute));
+
+    private bool Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value)) return false;
+        field = value;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        ScheduleSave();
+        return true;
+    }
+
+    private CancellationTokenSource? saveCts;
+
+    private void ScheduleSave()
+    {
+        saveCts?.Cancel();
+        var cts = saveCts = new CancellationTokenSource();
+        _ = Task.Delay(500, cts.Token).ContinueWith(t => { if (!t.IsCanceled) Save(); }, TaskScheduler.Default);
+    }
+
+    public void Save()
+    {
+        try
+        {
+            File.WriteAllText(StorePath, JsonSerializer.Serialize(this, Json));
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"settings save failed: {ex.Message}");
+        }
+    }
+
+    private static AppSettings Load()
+    {
+        try
+        {
+            if (File.Exists(StorePath))
+                return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(StorePath), Json) ?? new AppSettings();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"settings load failed: {ex.Message}");
+        }
+        return new AppSettings();
+    }
+}
+
+[AttributeUsage(AttributeTargets.Property)]
+public sealed class EditorOptionAttribute : Attribute { }

@@ -20,6 +20,21 @@
             postMessage: send
         };
     }
+    // Shell shortcuts pressed while the (native) web view has focus never reach the host window on Linux/macOS,
+    // so forward the ones the shell handles as a "Shortcut" message. The editor keeps its own (Ctrl+B/I/…).
+    var forwarded = { 's': true, 'o': true, 'n': true, 'w': true, 'f': true, 'tab': true, ',': true, '/': true, 'b': 'shift', 'r': 'shift' };
+    window.addEventListener('keydown', function (e) {
+        var ctrl = e.ctrlKey || e.metaKey;
+        var key = e.key === 'Tab' ? 'tab' : e.key.toLowerCase();
+        var rule = forwarded[key];
+        var wanted = (ctrl && rule && (rule !== 'shift' || e.shiftKey)) || (key === 'escape' && !ctrl);
+        if (!wanted) return;
+        if (key === 'escape' && !document.querySelector('.ag-highlight')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        send(JSON.stringify({ type: 'message', name: 'Shortcut', args: { key: key, ctrl: ctrl, shift: e.shiftKey, alt: e.altKey } }));
+    }, true);
+
     window.__unoDeliver = function (data) {
         if (native && typeof native.dispatchEvent === 'function') {
             native.dispatchEvent(new MessageEvent('message', { data: data }));
