@@ -148,6 +148,17 @@ public sealed class AppSettings : INotifyPropertyChanged
     private bool openFolderAfterExport = true;
     public bool OpenFolderAfterExport { get => openFolderAfterExport; set => Set(ref openFolderAfterExport, value); }
 
+    // ---- shortcuts ----
+    private ShortcutMap shortcuts = new();
+    public ShortcutMap Shortcuts { get => shortcuts; set => Set(ref shortcuts, value); }
+
+    /// <summary>Called after a binding was edited in place (the map itself is mutable).</summary>
+    public void NotifyShortcutsChanged()
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Shortcuts)));
+        ScheduleSave();
+    }
+
     // ---- images ----
     private ImageInsertAction imageAction = ImageInsertAction.CopyToFolder;
     public ImageInsertAction ImageAction { get => imageAction; set => Set(ref imageAction, value); }

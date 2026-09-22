@@ -13,6 +13,7 @@ public partial class App : Application
     public App()
     {
         ConfigureLinuxWebKit();
+        Services.X11Window.InstallLibraryResolver();
         Services.Log.WriteStartup();
         AppDomain.CurrentDomain.UnhandledException += (_, e) => Services.Log.Write($"unhandled: {e.ExceptionObject}");
         TaskScheduler.UnobservedTaskException += (_, e) => Services.Log.Write($"unobserved: {e.Exception.Message}");

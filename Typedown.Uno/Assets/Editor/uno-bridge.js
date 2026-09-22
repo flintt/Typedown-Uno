@@ -22,19 +22,26 @@
     }
     // Shell shortcuts pressed while the (native) web view has focus never reach the host window on Linux/macOS,
     // so forward the ones the shell handles as a "Shortcut" message. The editor keeps its own (Ctrl+B/I/…).
-    var forwarded = { 's': true, 'o': true, 'n': true, 'w': true, 'p': true, 'tab': true, ',': true, '/': true, 'b': 'shift', 'r': 'shift', 'f': 'shift' };
+    // Which key presses the shell wants back; replaced by the host (see "ShortcutMap") once it knows the bindings.
+    var forwarded = [];
+    var findShortcut = { key: 'f', ctrl: true, shift: false, alt: false };
     window.addEventListener('keydown', function (e) {
         var ctrl = e.ctrlKey || e.metaKey;
         var key = e.key === 'Tab' ? 'tab' : e.key.toLowerCase();
-        var rule = forwarded[key];
-        if (ctrl && key === 'f' && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); showFind(); return; }
+        if (matches(findShortcut, key, ctrl, e.shiftKey, e.altKey)) { e.preventDefault(); e.stopPropagation(); showFind(); return; }
         if (key === 'escape' && !ctrl && findBar && findBar.style.display !== 'none') { e.preventDefault(); e.stopPropagation(); hideFind(); return; }
-        var wanted = ctrl && rule && (rule !== 'shift' || e.shiftKey);
-        if (!wanted) return;
-        e.preventDefault();
-        e.stopPropagation();
-        send(JSON.stringify({ type: 'message', name: 'Shortcut', args: { key: key, ctrl: ctrl, shift: e.shiftKey, alt: e.altKey } }));
+        for (var i = 0; i < forwarded.length; i++) {
+            if (!matches(forwarded[i], key, ctrl, e.shiftKey, e.altKey)) continue;
+            e.preventDefault();
+            e.stopPropagation();
+            send(JSON.stringify({ type: 'message', name: 'Shortcut', args: { key: key, ctrl: ctrl, shift: e.shiftKey, alt: e.altKey } }));
+            return;
+        }
     }, true);
+
+    function matches(binding, key, ctrl, shift, alt) {
+        return binding && binding.key === key && !!binding.ctrl === ctrl && !!binding.shift === shift && !!binding.alt === alt;
+    }
 
     function deliver(data) {
         if (native && typeof native.dispatchEvent === 'function') {
@@ -160,6 +167,12 @@
     window.__unoDeliver = function (data) {
         try {
             var msg = JSON.parse(data);
+            if (msg && msg.name === 'ShortcutMap') {
+                forwarded = (msg.args && msg.args.keys) || [];
+                for (var i = 0; i < forwarded.length; i++)
+                    if (forwarded[i].find) findShortcut = forwarded[i];
+                return;
+            }
             if (msg && msg.name === 'ShowFind') { if (msg.args && msg.args.opt) findOptions = msg.args.opt; showFind(msg.args && msg.args.value); return; }
             if (msg && msg.name === 'HideFind') { hideFind(); return; }
         } catch (e) { }

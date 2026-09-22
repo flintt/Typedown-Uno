@@ -27,4 +27,12 @@
     </UnoFeatures>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- App icon: the original Typedown logo instead of the template's placeholder. -->
+    <UnoIcon Remove="Assets/Icons/icon.svg" />
+    <UnoIcon Include="Assets/Icons/icon.png" ForegroundFile="Assets/Icons/icon_foreground.png" Color="#F3F3F3" ForegroundScale="0.7" />
+    <!-- Shipped as a plain file too: the Linux desktop entry and the installer need a real PNG. -->
+    <Content Include="Assets/Icons/icon.png" Link="Assets/typedown.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

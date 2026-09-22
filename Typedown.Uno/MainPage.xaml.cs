@@ -149,6 +149,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         // The folder is relative to the app directory (Uno's X11 WebView joins it onto the base directory),
         // so it must stay relative — an absolute path would be concatenated onto the base directory.
         core.SetVirtualHostNameToFolderMapping(EditorHost, "Assets/Editor", CoreWebView2HostResourceAccessKind.Allow);
+        core.NavigationCompleted += async (_, args) => { if (args.IsSuccess) await PostShortcutMap(); };
         EditorView.Source = new Uri($"http://{EditorHost}/index.html");
         Services.Log.Write("navigating to the editor page");
 
@@ -218,6 +219,9 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     }
 
     private Task Post(string name, object? args) => transport?.PostMessage(name, args) ?? Task.CompletedTask;
+
+    /// <summary>The web view swallows key presses, so it must know which combinations to hand back.</summary>
+    private Task PostShortcutMap() => Post("ShortcutMap", new { keys = System.Text.Json.Nodes.JsonNode.Parse(settings.Shortcuts.ForwardedKeysJson()) });
 
     private void RegisterHostFunctions(EditorTransport t)
     {
@@ -336,7 +340,8 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                 var key = args?["key"]?.GetValue<string>() ?? "";
                 var ctrl = args?["ctrl"]?.GetValue<bool>() ?? false;
                 var shift = args?["shift"]?.GetValue<bool>() ?? false;
-                DispatcherQueue.TryEnqueue(async () => await HandleShortcutAsync(key, ctrl, shift));
+                var alt = args?["alt"]?.GetValue<bool>() ?? false;
+                DispatcherQueue.TryEnqueue(async () => await HandleShortcutAsync(key, ctrl, shift, alt));
                 break;
         }
     }
@@ -502,32 +507,36 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     {
         foreach (var handler in menuToggleHandlers) settings.PropertyChanged -= handler;
         menuToggleHandlers.Clear();
+        KeyboardAccelerators.Clear(); // rebuilt below from the current bindings
+        commandActions.Clear();
         MainMenu.Items.Clear();
         var file = new MenuBarItem { Title = Loc.Get("File") };
-        file.Items.Add(Item("New", async () => { if (tabs != null) await tabs.NewTabAsync(); }, VirtualKey.N, ctrl: true));
-        file.Items.Add(Item("Open", async () => await OpenFileDialogAsync(), VirtualKey.O, ctrl: true));
-        file.Items.Add(Item("OpenFolder", async () => await OpenFolderDialogAsync(), VirtualKey.O, ctrl: true, shift: true));
+        file.Items.Add(Item("New", async () => { if (tabs != null) await tabs.NewTabAsync(); }, ShortcutCommand.NewTab));
+        file.Items.Add(Item("Open", async () => await OpenFileDialogAsync(), ShortcutCommand.Open));
+        file.Items.Add(Item("OpenFolder", async () => await OpenFolderDialogAsync(), ShortcutCommand.OpenFolder));
         recentMenu = new MenuFlyoutSubItem { Text = Loc.Get("Recent") };
         file.Items.Add(recentMenu);
         FillRecent();
         file.Items.Add(new MenuFlyoutSeparator());
-        file.Items.Add(Item("Save", async () => { if (document != null) await document.SaveAsync(); }, VirtualKey.S, ctrl: true));
-        file.Items.Add(Item("SaveAs", async () => { if (document != null) await document.SaveAsAsync(); }, VirtualKey.S, ctrl: true, shift: true));
-        file.Items.Add(Item("ExportHtml", async () => await ExportHtmlAsync()));
-        file.Items.Add(Item("PrintPdf", async () => await PrintAsync(), VirtualKey.P, ctrl: true));
-        file.Items.Add(Item("ShareHedgeDoc", async () => await ShareToHedgeDocAsync()));
+        file.Items.Add(Item("Save", async () => { if (document != null) await document.SaveAsync(); }, ShortcutCommand.Save));
+        file.Items.Add(Item("SaveAs", async () => { if (document != null) await document.SaveAsAsync(); }, ShortcutCommand.SaveAs));
+        file.Items.Add(Item("ExportHtml", async () => await ExportHtmlAsync(), ShortcutCommand.ExportHtml));
+        file.Items.Add(Item("PrintPdf", async () => await PrintAsync(), ShortcutCommand.Print));
+        file.Items.Add(Item("ShareHedgeDoc", async () => await ShareToHedgeDocAsync(), ShortcutCommand.ShareHedgeDoc));
         file.Items.Add(new MenuFlyoutSeparator());
-        file.Items.Add(Item("Settings", async () => await ShowSettingsAsync(), (VirtualKey)188, ctrl: true));
-        file.Items.Add(Item("CloseTab", async () => { if (tabs != null) await tabs.CloseTabAsync(tabs.ActiveTab); }, VirtualKey.W, ctrl: true));
-        file.Items.Add(Item("Exit", async () => await ExitAsync()));
+        file.Items.Add(Item("Settings", async () => await ShowSettingsAsync(), ShortcutCommand.Settings));
+        file.Items.Add(Item("CloseTab", async () => { if (tabs != null) await tabs.CloseTabAsync(tabs.ActiveTab); }, ShortcutCommand.CloseTab));
+        file.Items.Add(Item("Exit", async () => await ExitAsync(), ShortcutCommand.Exit));
         MainMenu.Items.Add(file);
 
         var edit = new MenuBarItem { Title = Loc.Get("Edit") };
-        edit.Items.Add(Item("Find", () => ShowFind(true), VirtualKey.F, ctrl: true));
-        edit.Items.Add(Item("FindNext", async () => await Post("Find", new { action = "next" }), VirtualKey.F3));
-        edit.Items.Add(Item("FindPrevious", async () => await Post("Find", new { action = "prev" }), VirtualKey.F3, shift: true));
+        edit.Items.Add(Item("Find", () => ShowFind(true), ShortcutCommand.Find));
+        edit.Items.Add(Item("FindNext", async () => await Post("Find", new { action = "next" }), ShortcutCommand.FindNext));
+        edit.Items.Add(Item("FindPrevious", async () => await Post("Find", new { action = "prev" }), ShortcutCommand.FindPrevious));
         edit.Items.Add(new MenuFlyoutSeparator());
-        edit.Items.Add(Item("SelectAll", async () => await Post("SelectAll", null)));
+        edit.Items.Add(Item("SearchInFolder", () => { settings.SidePaneOpen = true; settings.SidePanePage = 2; ApplySidePane(); SearchBox.Focus(FocusState.Programmatic); }, ShortcutCommand.SearchInFolder));
+        edit.Items.Add(new MenuFlyoutSeparator());
+        edit.Items.Add(Item("SelectAll", async () => await Post("SelectAll", null), ShortcutCommand.SelectAll));
         MainMenu.Items.Add(edit);
 
         var paragraph = new MenuBarItem { Title = Loc.Get("Paragraph") };
@@ -570,18 +579,18 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         var format = new MenuBarItem { Title = Loc.Get("Format") };
         foreach (var (key, type) in new[] { ("Strong", "strong"), ("Emphasis", "em"), ("Underline", "u"), ("InlineCode", "inline_code"), ("InlineMath", "inline_math"), ("Strikethrough", "del"), ("Highlight", "mark"), ("Hyperlink", "link"), ("Image", "image") })
             format.Items.Add(Item(key, async () => await Post("Format", type)));
-        format.Items.Add(Item("InsertImage", async () => await InsertImageDialogAsync()));
+        format.Items.Add(Item("InsertImage", async () => await InsertImageDialogAsync(), ShortcutCommand.InsertImage));
         format.Items.Add(new MenuFlyoutSeparator());
         format.Items.Add(Item("ClearFormat", async () => await Post("Format", "clear")));
         MainMenu.Items.Add(format);
 
         var view = new MenuBarItem { Title = Loc.Get("View") };
-        view.Items.Add(Toggle("SourceCode", () => settings.SourceCode, v => settings.SourceCode = v, (VirtualKey)191, ctrl: true));
+        view.Items.Add(Toggle("SourceCode", () => settings.SourceCode, v => settings.SourceCode = v, ShortcutCommand.SourceCode));
         view.Items.Add(Toggle("FocusMode", () => settings.FocusMode, v => settings.FocusMode = v));
         view.Items.Add(Toggle("Typewriter", () => settings.Typewriter, v => settings.Typewriter = v));
-        view.Items.Add(Toggle("ReadOnly", () => settings.ReadOnly, v => settings.ReadOnly = v, VirtualKey.R, ctrl: true, shift: true));
+        view.Items.Add(Toggle("ReadOnly", () => settings.ReadOnly, v => settings.ReadOnly = v, ShortcutCommand.ReadingMode));
         view.Items.Add(new MenuFlyoutSeparator());
-        view.Items.Add(Toggle("SidePane", () => settings.SidePaneOpen, v => settings.SidePaneOpen = v, VirtualKey.B, ctrl: true, shift: true));
+        view.Items.Add(Toggle("SidePane", () => settings.SidePaneOpen, v => settings.SidePaneOpen = v, ShortcutCommand.SidePane));
         var theme = new MenuFlyoutSubItem { Text = Loc.Get("Theme") };
         foreach (var t in Enum.GetValues<AppTheme>())
         {
@@ -598,44 +607,41 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         MainMenu.Items.Add(help);
     }
 
-    private MenuFlyoutItem Item(string key, Action action, VirtualKey? accelerator = null, bool ctrl = false, bool shift = false)
+    private MenuFlyoutItem Item(string key, Action action, ShortcutCommand? command = null)
     {
         var item = new MenuFlyoutItem { Text = Loc.Get(key) };
         item.Click += (_, _) => action();
-        if (accelerator != null) AddAccelerator(item, accelerator.Value, ctrl, shift, action);
+        if (command != null) BindShortcut(item, command.Value, action);
         return item;
     }
 
-    private ToggleMenuFlyoutItem Toggle(string key, Func<bool> get, Action<bool> set, VirtualKey? accelerator = null, bool ctrl = false, bool shift = false)
+    /// <summary>Shows the binding on the menu item and registers the matching page accelerator.</summary>
+    private void BindShortcut(MenuFlyoutItemBase item, ShortcutCommand command, Action action)
+    {
+        commandActions[command] = action;
+        var shortcut = settings.Shortcuts.Get(command);
+        if (item is MenuFlyoutItem menuItem) menuItem.KeyboardAcceleratorTextOverride = shortcut.ToString();
+        if (shortcut.ToAccelerator() is not { } accelerator) return;
+        // Page-scoped: works while the shell has focus. Inside the editor (a native web view) uno-bridge.js
+        // forwards the key press instead — see OnEditorMessage("Shortcut").
+        var keyboardAccelerator = new KeyboardAccelerator { Key = accelerator.key, Modifiers = accelerator.modifiers };
+        keyboardAccelerator.Invoked += (_, e) => { e.Handled = true; action(); };
+        KeyboardAccelerators.Add(keyboardAccelerator);
+    }
+
+    private readonly Dictionary<ShortcutCommand, Action> commandActions = new();
+
+    private ToggleMenuFlyoutItem Toggle(string key, Func<bool> get, Action<bool> set, ShortcutCommand? command = null)
     {
         var item = new ToggleMenuFlyoutItem { Text = Loc.Get(key), IsChecked = get() };
         item.Click += (_, _) => set(item.IsChecked);
         void Flip() { set(!get()); item.IsChecked = get(); }
-        if (accelerator != null) AddAccelerator(item, accelerator.Value, ctrl, shift, Flip);
+        if (command != null) BindShortcut(item, command.Value, Flip);
         void OnChanged(object? _, System.ComponentModel.PropertyChangedEventArgs __) => DispatcherQueue.TryEnqueue(() => item.IsChecked = get());
         settings.PropertyChanged += OnChanged;
         menuToggleHandlers.Add(OnChanged); // dropped when the menus are rebuilt (see BuildMenus)
         return item;
     }
-
-    private void AddAccelerator(MenuFlyoutItemBase item, VirtualKey key, bool ctrl, bool shift, Action action)
-    {
-        var modifiers = (ctrl ? VirtualKeyModifiers.Control : VirtualKeyModifiers.None) | (shift ? VirtualKeyModifiers.Shift : VirtualKeyModifiers.None);
-        // Page-scoped accelerator: works while focus is in the shell. Inside the editor (a native web view on Linux)
-        // the same combination is forwarded by uno-bridge.js as a "Shortcut" message (see HandleShortcutAsync).
-        var accelerator = new KeyboardAccelerator { Key = key, Modifiers = modifiers };
-        accelerator.Invoked += (_, e) => { e.Handled = true; action(); };
-        KeyboardAccelerators.Add(accelerator);
-        if (item is MenuFlyoutItem mi) mi.KeyboardAcceleratorTextOverride = (ctrl ? "Ctrl+" : "") + (shift ? "Shift+" : "") + KeyText(key);
-    }
-
-    private static string KeyText(VirtualKey key) => key switch
-    {
-        (VirtualKey)188 => ",",
-        (VirtualKey)191 => "/",
-        VirtualKey.Tab => "Tab",
-        _ => key.ToString(),
-    };
 
     private void FillRecent()
     {
@@ -655,9 +661,15 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         recentMenu.Items.Add(Item("ClearRecent", () => settings.RecentFiles = new()));
     }
 
-    private async Task HandleShortcutAsync(string key, bool ctrl, bool shift)
+    private async Task HandleShortcutAsync(string key, bool ctrl, bool shift, bool alt = false)
     {
         if (tabs == null || document == null) return;
+        // Bindings first: the editor forwards the keys the map asked for.
+        if (settings.Shortcuts.Find(key, ctrl, shift, alt) is { } command && commandActions.TryGetValue(command, out var action))
+        {
+            action();
+            return;
+        }
         switch ((key.ToLowerInvariant(), ctrl, shift))
         {
             case ("s", true, false): await document.SaveAsync(); break;
@@ -1040,6 +1052,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                 case nameof(AppSettings.WordCountMethod): lastTocJson = null; break;
                 case nameof(AppSettings.RecentFiles): FillRecent(); break;
                 case nameof(AppSettings.Language): Loc.Apply(settings.Language); ApplyStrings(); BuildMenus(); UpdateTitle(); break;
+                case nameof(AppSettings.Shortcuts): BuildMenus(); _ = PostShortcutMap(); break;
             }
         });
     }
@@ -1169,6 +1182,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     {
         var title = document?.Title ?? "Typedown";
         if (App.MainWindow != null) App.MainWindow.Title = title;
+        Services.X11Window.SetTitle(title); // Uno publishes WM_NAME as Latin-1; non-ASCII titles need UTF-8
         StatusText.Text = document?.FilePath ?? Loc.Get("Untitled");
     }
 

@@ -12,6 +12,9 @@ public sealed partial class SettingsDialog : ContentDialog
     private static readonly string[] Indentations = { "1", "2", "4", "tab" };
     private static readonly string[] Directions = { "auto", "ltr", "rtl" };
 
+    private readonly Dictionary<string, List<FrameworkElement>> sections = new();
+    private string currentSection = "";
+
     public SettingsDialog(AppSettings settings)
     {
         this.settings = settings;
@@ -19,12 +22,23 @@ public sealed partial class SettingsDialog : ContentDialog
         Title = Loc.Get("SettingsTitle");
         CloseButtonText = Loc.Get("Close");
         Build();
+        foreach (var key in sections.Keys) Categories.Items.Add(Loc.Get(key));
         loading = false;
+        Categories.SelectedIndex = 0;
+    }
+
+    private void OnCategoryChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (Categories.SelectedIndex < 0) return;
+        currentSection = sections.Keys.ElementAt(Categories.SelectedIndex);
+        Container.Children.Clear();
+        foreach (var row in sections[currentSection]) Container.Children.Add(row);
+        Scroller.ChangeView(null, 0, null, true);
     }
 
     private void Build()
     {
-        Header("General");
+        Section("General");
         Combo("Language", Languages.Select(l => l.value == "" ? Loc.Get(l.label) : l.label), Math.Max(0, Array.FindIndex(Languages, l => l.value == settings.Language)),
             i => settings.Language = Languages[i].value);
         Combo("Theme", Enum.GetValues<AppTheme>().Select(t => Loc.Get("Theme" + t)), (int)settings.Theme, i => settings.Theme = (AppTheme)i);
@@ -36,14 +50,14 @@ public sealed partial class SettingsDialog : ContentDialog
         Toggle("StatusBar", settings.StatusBarOpen, v => settings.StatusBarOpen = v);
         Combo("WordCountMethod", Enum.GetValues<WordCountMethod>().Select(m => Loc.Get("Count" + m)), (int)settings.WordCountMethod, i => settings.WordCountMethod = (WordCountMethod)i);
 
-        Header("FilesSection");
+        Section("FilesSection");
         Toggle("AutoSave", settings.AutoSave, v => settings.AutoSave = v);
         Toggle("RememberPosition", settings.RememberPosition, v => settings.RememberPosition = v);
         Toggle("AutoReload", settings.AutoReload, v => settings.AutoReload = v, "AutoReloadDescription");
         Toggle("AskBeforeReload", settings.AskBeforeReload, v => settings.AskBeforeReload = v);
         Toggle("OpenFolderAfterExport", settings.OpenFolderAfterExport, v => settings.OpenFolderAfterExport = v);
 
-        Header("Editor");
+        Section("Editor");
         Number("FontSize", settings.FontSize, 8, 48, 1, v => settings.FontSize = (int)v);
         Number("LineHeight", settings.LineHeight, 1, 3, 0.1, v => settings.LineHeight = Math.Round(v, 2));
         Text("EditorWidth", settings.EditorAreaWidth, v => settings.EditorAreaWidth = v);
@@ -61,19 +75,23 @@ public sealed partial class SettingsDialog : ContentDialog
         Toggle("AutoPairMarkdown", settings.AutoPairMarkdownSyntax, v => settings.AutoPairMarkdownSyntax = v);
         MultilineText("CustomCss", settings.CustomCss, v => settings.CustomCss = v);
 
-        Header("ImageSection");
+        Section("ImageSection");
         Combo("ImageAction", new[] { Loc.Get("ImageCopy"), Loc.Get("ImageKeep") }, (int)settings.ImageAction, i => settings.ImageAction = (ImageInsertAction)i);
         Text("ImageCopyPath", settings.ImageCopyPath, v => settings.ImageCopyPath = v, hint: "./${filename}.assets");
-        Container.Children.Add(new TextBlock { Text = Loc.Get("ImageCopyPathHint"), Opacity = 0.6, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4) });
+        Add(new TextBlock { Text = Loc.Get("ImageCopyPathHint"), Opacity = 0.6, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4) });
         Toggle("PreferRelativeImagePaths", settings.PreferRelativeImagePaths, v => settings.PreferRelativeImagePaths = v);
         Toggle("EncodeImageLinks", settings.EncodeImageLinks, v => settings.EncodeImageLinks = v);
 
-        Header("FindSection");
+        Section("FindSection");
         Toggle("FindCaseSensitive", settings.FindCaseSensitive, v => settings.FindCaseSensitive = v);
         Toggle("FindWholeWord", settings.FindWholeWord, v => settings.FindWholeWord = v);
         Toggle("FindRegex", settings.FindRegex, v => settings.FindRegex = v);
 
-        Header("HedgeDoc");
+        Section("ShortcutSection");
+        Add(new TextBlock { Text = Loc.Get("ShortcutHint"), Opacity = 0.6, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6) });
+        foreach (var command in Enum.GetValues<ShortcutCommand>()) ShortcutRow(command);
+
+        Section("HedgeDoc");
         Text("Server", settings.HedgeDocServer, v => settings.HedgeDocServer = v, placeholder: null, hint: "https://md.example.com");
         Text("Email", settings.HedgeDocEmail, v => settings.HedgeDocEmail = v);
         Password("Password", settings.HedgeDocPassword, v => settings.HedgeDocPassword = v);
@@ -83,18 +101,20 @@ public sealed partial class SettingsDialog : ContentDialog
 
     // ---- row builders -------------------------------------------------------------------------------------
 
-    private void Header(string key) => Container.Children.Add(new TextBlock
+    /// <summary>Starts a category; following rows are added to it.</summary>
+    private void Section(string key)
     {
-        Text = Loc.Get(key),
-        FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-        Margin = new Thickness(0, Container.Children.Count == 0 ? 0 : 14, 0, 6),
-    });
+        currentSection = key;
+        sections[key] = new List<FrameworkElement>();
+    }
+
+    private void Add(FrameworkElement row) => sections[currentSection].Add(row);
 
     private void Toggle(string key, bool value, Action<bool> set, string? descriptionKey = null)
     {
         var toggle = new ToggleSwitch { IsOn = value, OnContent = "", OffContent = "", MinWidth = 0 };
         toggle.Toggled += (_, _) => { if (!loading) set(toggle.IsOn); };
-        Container.Children.Add(Row(key, toggle, descriptionKey));
+        Add(Row(key, toggle, descriptionKey));
     }
 
     private void Combo(string key, IEnumerable<string> items, int selected, Action<int> set)
@@ -103,35 +123,35 @@ public sealed partial class SettingsDialog : ContentDialog
         foreach (var item in items) combo.Items.Add(item);
         combo.SelectedIndex = selected;
         combo.SelectionChanged += (_, _) => { if (!loading && combo.SelectedIndex >= 0) set(combo.SelectedIndex); };
-        Container.Children.Add(Row(key, combo));
+        Add(Row(key, combo));
     }
 
     private void Number(string key, double value, double min, double max, double step, Action<double> set)
     {
         var box = new NumberBox { Value = value, Minimum = min, Maximum = max, SmallChange = step, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact, MinWidth = 140 };
         box.ValueChanged += (_, args) => { if (!loading && !double.IsNaN(args.NewValue)) set(args.NewValue); };
-        Container.Children.Add(Row(key, box));
+        Add(Row(key, box));
     }
 
     private void Text(string key, string value, Action<string> set, string? placeholder = null, string? hint = null)
     {
         var box = new TextBox { Text = value, MinWidth = 220, PlaceholderText = hint ?? (placeholder != null ? Loc.Get(placeholder) : "") };
         box.TextChanged += (_, _) => { if (!loading) set(box.Text.Trim()); };
-        Container.Children.Add(Row(key, box));
+        Add(Row(key, box));
     }
 
     private void MultilineText(string key, string value, Action<string> set)
     {
         var box = new TextBox { Text = value, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, Height = 90, MinWidth = 220 };
         box.TextChanged += (_, _) => { if (!loading) set(box.Text); };
-        Container.Children.Add(Row(key, box, stacked: true));
+        Add(Row(key, box, stacked: true));
     }
 
     private void Password(string key, string value, Action<string> set)
     {
         var box = new PasswordBox { Password = value, MinWidth = 220 };
         box.PasswordChanged += (_, _) => { if (!loading) set(box.Password); };
-        Container.Children.Add(Row(key, box));
+        Add(Row(key, box));
     }
 
     private void FolderRow(string key, Func<string?> get, Action<string?> set)
@@ -159,8 +179,66 @@ public sealed partial class SettingsDialog : ContentDialog
             text.Text = path;
         };
         var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { text, button } };
-        Container.Children.Add(Row(key, panel));
+        Add(Row(key, panel));
     }
+
+    /// <summary>One binding: click the box, press the combination, Esc clears it and the arrow restores the default.</summary>
+    private void ShortcutRow(ShortcutCommand command)
+    {
+        var box = new TextBox
+        {
+            Text = settings.Shortcuts.Get(command).ToString(),
+            IsReadOnly = true,
+            MinWidth = 170,
+            PlaceholderText = Loc.Get("ShortcutNone"),
+        };
+        box.PreviewKeyDown += (_, e) =>
+        {
+            e.Handled = true;
+            var key = e.Key;
+            if (key is Windows.System.VirtualKey.Control or Windows.System.VirtualKey.Shift or Windows.System.VirtualKey.Menu) return;
+            if (key == Windows.System.VirtualKey.Escape)
+            {
+                settings.Shortcuts.Set(command, Shortcut.None);
+                box.Text = "";
+                settings.NotifyShortcutsChanged();
+                return;
+            }
+            var ctrl = IsDown(Windows.System.VirtualKey.Control);
+            var shift = IsDown(Windows.System.VirtualKey.Shift);
+            var alt = IsDown(Windows.System.VirtualKey.Menu);
+            var name = KeyName(key);
+            if (name == null) return;
+            var shortcut = new Shortcut(ctrl, shift, alt, name);
+            settings.Shortcuts.Set(command, shortcut);
+            box.Text = shortcut.ToString();
+            settings.NotifyShortcutsChanged();
+        };
+        var reset = new Button { Content = "↺" };
+        ToolTipService.SetToolTip(reset, Loc.Get("ShortcutReset"));
+        reset.Click += (_, _) =>
+        {
+            settings.Shortcuts.Reset(command);
+            box.Text = ShortcutMap.Default(command).ToString();
+            settings.NotifyShortcutsChanged();
+        };
+        var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { box, reset } };
+        Add(Row("Cmd" + command, panel));
+    }
+
+    private static bool IsDown(Windows.System.VirtualKey key) =>
+        Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
+
+    private static string? KeyName(Windows.System.VirtualKey key) => key switch
+    {
+        >= Windows.System.VirtualKey.A and <= Windows.System.VirtualKey.Z => key.ToString().ToLowerInvariant(),
+        >= Windows.System.VirtualKey.Number0 and <= Windows.System.VirtualKey.Number9 => ((int)key - (int)Windows.System.VirtualKey.Number0).ToString(),
+        >= Windows.System.VirtualKey.F1 and <= Windows.System.VirtualKey.F12 => key.ToString().ToLowerInvariant(),
+        Windows.System.VirtualKey.Tab => "tab",
+        (Windows.System.VirtualKey)188 => ",",
+        (Windows.System.VirtualKey)191 => "/",
+        _ => null,
+    };
 
     private void TestRow()
     {
@@ -174,7 +252,7 @@ public sealed partial class SettingsDialog : ContentDialog
             catch (Exception ex) { status.Text = ex.Message; }
             finally { button.IsEnabled = true; }
         };
-        Container.Children.Add(Row("TestConnection", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { button, status } }));
+        Add(Row("TestConnection", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { button, status } }));
     }
 
     private static FrameworkElement Row(string key, FrameworkElement control, string? descriptionKey = null, bool stacked = false)
