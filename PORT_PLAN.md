@@ -24,8 +24,8 @@
 
 ## 里程碑
 
-1. **M1 编辑器跑起来**（本仓库当前状态）：WebView2 加载 `Assets/Editor/index.html`，垫片桥接消息，宿主应答 `GetSettings / GetCurrentTheme / ContentLoaded / GetStringResources`，能打字并收到 `MarkdownChange`。
-2. **M2 文件**：打开/保存/另存为（Uno `FileOpenPicker`/`FileSavePicker`，Linux 走 GTK 对话框）、外部修改监视、原子写入、光标/滚动记忆、最近文件。
+1. **M1 编辑器跑起来**（✅ 2026-09-22）：WebView2 加载 `Assets/Editor/index.html`，垫片桥接消息，宿主应答 `GetSettings / GetCurrentTheme / ContentLoaded / GetStringResources`，能打字并收到 `MarkdownChange`。
+2. **M2 文件**（进行中：打开/保存/另存为/外部修改/光标滚动记忆/命令行参数 ✅；最近文件、自动保存、多窗口待做）：打开/保存/另存为（Uno `FileOpenPicker`/`FileSavePicker`，Linux 走 GTK 对话框）、外部修改监视、原子写入、光标/滚动记忆、最近文件。
 3. **M3 壳**：菜单栏（`MenuBar`）、标题、状态栏、多标签（`TabView`）、侧栏（文件树 `TreeView`、大纲、文件夹搜索）。
 4. **M4 设置**：设置页（通用/外观/编辑器/导出/快捷键）、主题（浅色/深色/纯黑）、本地化（zh-Hans/zh-Hant/en 起步）。
 5. **M5 导出与分享**：HTML/PDF（WebKit 打印或 `ExecuteScript` 生成 HTML 后交给系统）、分享到 HedgeDoc。

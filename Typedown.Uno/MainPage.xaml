@@ -5,11 +5,49 @@
       Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
   <Grid>
     <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
       <RowDefinition Height="*"/>
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
-    <!-- M1: the Typedown editor (React/Muya) hosted in a WebView2; the host bridge lives in Assets/Editor/uno-bridge.js -->
-    <WebView2 x:Name="EditorView" Grid.Row="0"/>
-    <TextBlock x:Name="StatusText" Grid.Row="1" Margin="8,4" FontSize="12" Opacity="0.7" Text="starting editor…"/>
+
+    <MenuBar Grid.Row="0">
+      <MenuBarItem Title="File">
+        <MenuFlyoutItem Text="New" Click="OnNewClick">
+          <MenuFlyoutItem.KeyboardAccelerators>
+            <KeyboardAccelerator Modifiers="Control" Key="N"/>
+          </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem Text="Open…" Click="OnOpenClick">
+          <MenuFlyoutItem.KeyboardAccelerators>
+            <KeyboardAccelerator Modifiers="Control" Key="O"/>
+          </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutSeparator/>
+        <MenuFlyoutItem Text="Save" Click="OnSaveClick">
+          <MenuFlyoutItem.KeyboardAccelerators>
+            <KeyboardAccelerator Modifiers="Control" Key="S"/>
+          </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem Text="Save As…" Click="OnSaveAsClick">
+          <MenuFlyoutItem.KeyboardAccelerators>
+            <KeyboardAccelerator Modifiers="Control,Shift" Key="S"/>
+          </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutSeparator/>
+        <MenuFlyoutItem Text="Exit" Click="OnExitClick"/>
+      </MenuBarItem>
+    </MenuBar>
+
+    <!-- The Typedown editor (React/Muya) in a WebView2; the host bridge lives in Assets/Editor/uno-bridge.js -->
+    <WebView2 x:Name="EditorView" Grid.Row="1"/>
+
+    <Grid Grid.Row="2" Padding="8,4" ColumnSpacing="12" Background="{ThemeResource LayerFillColorDefaultBrush}">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="Auto"/>
+      </Grid.ColumnDefinitions>
+      <TextBlock x:Name="StatusText" FontSize="12" Opacity="0.7" Text="starting editor…" TextTrimming="CharacterEllipsis"/>
+      <TextBlock x:Name="WordCountText" Grid.Column="1" FontSize="12" Opacity="0.7"/>
+    </Grid>
   </Grid>
 </Page>
