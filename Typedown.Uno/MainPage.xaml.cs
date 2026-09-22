@@ -94,6 +94,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         UpdateTitle();
         UpdateTabBar();
         HookWindowClosing();
+        Services.X11Window.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "typedown.png"));
 
         await StartEditorAsync();
     }

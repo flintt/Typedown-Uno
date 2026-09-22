@@ -8,21 +8,22 @@ mkdir -p /opt/typedown-uno
 tar -xzf "${1:-/tmp/Typedown-linux-x64.tar.gz}" -C /opt/typedown-uno
 chmod +x /opt/typedown-uno/Typedown.Uno
 
-# Uno's GTK web view P/Invokes unversioned library names (libgdk-3.so, libsoup-3.0.so, libwebkit2gtk-4.1.so…).
-# Those symlinks ship only in the -dev packages, so on a normal desktop the native web view silently fails to
-# finish initializing (menus work, editor stays blank). Create just the links instead of pulling in the headers.
-libdir=$(dirname "$(ldconfig -p | awk '/libgtk-3\.so\.0/ {print $NF; exit}')")
-for base in libwebkit2gtk-4.1 libjavascriptcoregtk-4.1 libgdk-3 libgtk-3 libsoup-3.0 libcairo libpango-1.0 libpangocairo-1.0 libgdk_pixbuf-2.0; do
-  if [ ! -e "$libdir/$base.so" ]; then
-    target=$(ls "$libdir/$base.so."* 2>/dev/null | grep -E "\.so\.[0-9]+$" | head -1)
-    [ -n "$target" ] && ln -sf "$(basename "$target")" "$libdir/$base.so" && echo "linked $base.so -> $(basename "$target")"
-  fi
-done
-ldconfig
+# The launcher links the unversioned SONAMEs into a per-user directory, so no /usr/lib changes are needed.
 
 cat > /usr/local/bin/typedown <<'EOF'
 #!/bin/sh
-# Typedown (Uno Platform build); the WebKitGTK view inside Uno needs X11 even on Wayland sessions
+# Uno's GTK web view binds unversioned SONAMEs (libgdk-3.so, libsoup-3.0.so, libwebkit2gtk-4.1.so…), which only
+# the -dev packages provide. Rather than require those, link the versioned libraries into a per-user directory
+# and put it on the loader path — no root, works the same from the deb, the AppImage and the tarball.
+libdir="${XDG_CACHE_HOME:-$HOME/.cache}/typedown/lib"
+mkdir -p "$libdir" 2>/dev/null
+for base in libwebkit2gtk-4.1 libjavascriptcoregtk-4.1 libgdk-3 libgtk-3 libsoup-3.0 libcairo libpango-1.0 libpangocairo-1.0 libgdk_pixbuf-2.0 libatk-1.0 libgio-2.0 libglib-2.0 libgobject-2.0; do
+  [ -e "$libdir/$base.so" ] && continue
+  target=$(ldconfig -p 2>/dev/null | awk -v pat="^$base\\.so\\.[0-9]+$" '$1 ~ pat { print $NF; exit }')
+  [ -n "$target" ] && ln -sf "$target" "$libdir/$base.so" 2>/dev/null
+done
+export LD_LIBRARY_PATH="$libdir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+# The GTK web view needs X11 even in a Wayland session.
 export GDK_BACKEND=x11
 exec /opt/typedown-uno/Typedown.Uno "$@"
 EOF

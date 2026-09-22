@@ -55,6 +55,58 @@ public static class X11Window
         }
     }
 
+    /// <summary>
+    /// Publishes the app icon at several sizes as <c>_NET_WM_ICON</c>. Uno only sets a single small size, which
+    /// looks blurry in docks and task switchers.
+    /// </summary>
+    public static void SetIcon(string pngPath)
+    {
+        if (!OperatingSystem.IsLinux() || !File.Exists(pngPath)) return;
+        try
+        {
+            if (display == IntPtr.Zero) display = XOpenDisplay(IntPtr.Zero);
+            if (display == IntPtr.Zero) return;
+            if (window == IntPtr.Zero) window = FindAppWindow();
+            if (window == IntPtr.Zero) return;
+
+            using var original = SkiaSharp.SKBitmap.Decode(pngPath);
+            if (original == null) return;
+            // One property write per size (PropModeAppend): a single request with every size would exceed the
+            // X maximum request length and be dropped. 128 is the largest size that fits comfortably.
+            var mode = 0; // PropModeReplace for the first chunk, PropModeAppend afterwards
+            var icon = XInternAtom(display, "_NET_WM_ICON", false);
+            var cardinal = XInternAtom(display, "CARDINAL", false);
+            foreach (var size in new[] { 128, 64, 48, 32, 16 })
+            {
+                var payload = new List<long>();
+                using var scaled = new SkiaSharp.SKBitmap(new SkiaSharp.SKImageInfo(size, size, SkiaSharp.SKColorType.Bgra8888, SkiaSharp.SKAlphaType.Unpremul));
+                using (var canvas = new SkiaSharp.SKCanvas(scaled))
+                {
+                    canvas.Clear(SkiaSharp.SKColors.Transparent);
+                    canvas.DrawBitmap(original, new SkiaSharp.SKRect(0, 0, original.Width, original.Height), new SkiaSharp.SKRect(0, 0, size, size));
+                }
+                payload.Add(size);
+                payload.Add(size);
+                for (var y = 0; y < size; y++)
+                    for (var x = 0; x < size; x++)
+                    {
+                        var color = scaled.GetPixel(x, y);
+                        payload.Add((long)(uint)((color.Alpha << 24) | (color.Red << 16) | (color.Green << 8) | color.Blue));
+                    }
+                // format 32 means "long" in Xlib, i.e. 8 bytes per element on 64-bit.
+                var bytes = new byte[payload.Count * sizeof(long)];
+                Buffer.BlockCopy(payload.ToArray(), 0, bytes, 0, bytes.Length);
+                XChangeProperty(display, window, icon, cardinal, 32, mode, bytes, payload.Count);
+                mode = 2; // PropModeAppend
+            }
+            XFlush(display);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("set window icon", ex);
+        }
+    }
+
     /// <summary>Our toplevel window, found by the WM_CLASS the app sets (there is no public handle in Uno).</summary>
     private static IntPtr FindAppWindow()
     {

@@ -28,7 +28,18 @@ chmod +x "$ROOT/opt/$NAME/Typedown.Uno"
 
 cat > "$ROOT/usr/bin/$NAME" <<'LAUNCH'
 #!/bin/sh
-# The GTK web view inside Uno needs X11 even in a Wayland session.
+# Uno's GTK web view binds unversioned SONAMEs (libgdk-3.so, libsoup-3.0.so, libwebkit2gtk-4.1.so…), which only
+# the -dev packages provide. Rather than require those, link the versioned libraries into a per-user directory
+# and put it on the loader path — no root, works the same from the deb, the AppImage and the tarball.
+libdir="${XDG_CACHE_HOME:-$HOME/.cache}/typedown/lib"
+mkdir -p "$libdir" 2>/dev/null
+for base in libwebkit2gtk-4.1 libjavascriptcoregtk-4.1 libgdk-3 libgtk-3 libsoup-3.0 libcairo libpango-1.0 libpangocairo-1.0 libgdk_pixbuf-2.0 libatk-1.0 libgio-2.0 libglib-2.0 libgobject-2.0; do
+  [ -e "$libdir/$base.so" ] && continue
+  target=$(ldconfig -p 2>/dev/null | awk -v pat="^$base\\.so\\.[0-9]+$" '$1 ~ pat { print $NF; exit }')
+  [ -n "$target" ] && ln -sf "$target" "$libdir/$base.so" 2>/dev/null
+done
+export LD_LIBRARY_PATH="$libdir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+# The GTK web view needs X11 even in a Wayland session.
 export GDK_BACKEND=x11
 exec /opt/typedown/Typedown.Uno "$@"
 LAUNCH
@@ -72,8 +83,20 @@ if command -v appimagetool >/dev/null; then
   [ -f "$PUBLISH/Assets/typedown.png" ] && cp "$PUBLISH/Assets/typedown.png" "$APPDIR/$NAME.png" && cp "$PUBLISH/Assets/typedown.png" "$APPDIR/usr/share/icons/hicolor/256x256/apps/$NAME.png"
   cat > "$APPDIR/AppRun" <<'APPRUN'
 #!/bin/sh
-HERE=$(dirname "$(readlink -f "$0")")
+# Uno's GTK web view binds unversioned SONAMEs (libgdk-3.so, libsoup-3.0.so, libwebkit2gtk-4.1.so…), which only
+# the -dev packages provide. Rather than require those, link the versioned libraries into a per-user directory
+# and put it on the loader path — no root, works the same from the deb, the AppImage and the tarball.
+libdir="${XDG_CACHE_HOME:-$HOME/.cache}/typedown/lib"
+mkdir -p "$libdir" 2>/dev/null
+for base in libwebkit2gtk-4.1 libjavascriptcoregtk-4.1 libgdk-3 libgtk-3 libsoup-3.0 libcairo libpango-1.0 libpangocairo-1.0 libgdk_pixbuf-2.0 libatk-1.0 libgio-2.0 libglib-2.0 libgobject-2.0; do
+  [ -e "$libdir/$base.so" ] && continue
+  target=$(ldconfig -p 2>/dev/null | awk -v pat="^$base\\.so\\.[0-9]+$" '$1 ~ pat { print $NF; exit }')
+  [ -n "$target" ] && ln -sf "$target" "$libdir/$base.so" 2>/dev/null
+done
+export LD_LIBRARY_PATH="$libdir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+# The GTK web view needs X11 even in a Wayland session.
 export GDK_BACKEND=x11
+HERE=$(dirname "$(readlink -f "$0")")
 exec "$HERE/usr/bin/Typedown.Uno" "$@"
 APPRUN
   chmod +x "$APPDIR/AppRun"
