@@ -25,11 +25,11 @@
 ## 里程碑
 
 1. **M1 编辑器跑起来**（✅ 2026-09-22）：WebView2 加载 `Assets/Editor/index.html`，垫片桥接消息，宿主应答 `GetSettings / GetCurrentTheme / ContentLoaded / GetStringResources`，能打字并收到 `MarkdownChange`。
-2. **M2 文件**（进行中：打开/保存/另存为/外部修改/光标滚动记忆/命令行参数 ✅；最近文件、自动保存、多窗口待做）：打开/保存/另存为（Uno `FileOpenPicker`/`FileSavePicker`，Linux 走 GTK 对话框）、外部修改监视、原子写入、光标/滚动记忆、最近文件。
-3. **M3 壳**：菜单栏（`MenuBar`）、标题、状态栏、多标签（`TabView`）、侧栏（文件树 `TreeView`、大纲、文件夹搜索）。
-4. **M4 设置**：设置页（通用/外观/编辑器/导出/快捷键）、主题（浅色/深色/纯黑）、本地化（zh-Hans/zh-Hant/en 起步）。
-5. **M5 导出与分享**：HTML/PDF（WebKit 打印或 `ExecuteScript` 生成 HTML 后交给系统）、分享到 HedgeDoc。
-6. **M6 打包**：Linux AppImage/.deb（`dotnet publish` + `uno-publish`），Windows/macOS 自包含包；CI（GitHub Actions ubuntu + windows + macos）。
+2. **M2 文件**（✅ 除多窗口）：打开/保存/另存为（Uno `FileOpenPicker`/`FileSavePicker`，Linux 走 GTK 对话框）、外部修改监视、原子写入、光标/滚动记忆、最近文件。
+3. **M3 壳**（✅ 菜单/标签/侧栏/查找）：菜单栏（`MenuBar`）、标题、状态栏、多标签（`TabView`）、侧栏（文件树 `TreeView`、大纲、文件夹搜索）。
+4. **M4 设置**（✅ 设置对话框、主题、zh-Hans/en）：设置页（通用/外观/编辑器/导出/快捷键）、主题（浅色/深色/纯黑）、本地化（zh-Hans/zh-Hant/en 起步）。
+5. **M5 导出与分享**（✅ HTML、HedgeDoc；PDF/打印未做）：HTML/PDF（WebKit 打印或 `ExecuteScript` 生成 HTML 后交给系统）、分享到 HedgeDoc。
+6. **M6 打包**（✅ GitHub Actions：linux-x64 / win-x64 / osx-arm64 自包含包，tag 发布 Release）：Linux AppImage/.deb（`dotnet publish` + `uno-publish`），Windows/macOS 自包含包；CI（GitHub Actions ubuntu + windows + macos）。
 
 ## 不做 / 降级
 
@@ -57,3 +57,11 @@ dotnet build Typedown.Uno/Typedown.Uno.csproj -f net9.0-desktop
 xvfb-run -a dotnet run --project Typedown.Uno/Typedown.Uno.csproj -f net9.0-desktop   # 无显示器时
 ```
 依赖：`libgtk-3-0 libwebkit2gtk-4.1-0`（Ubuntu 24.04）。
+
+## 里程碑之后的待办
+
+- 图片：插入本地图片（复制到文档目录）、粘贴图片、拖放文件到窗口打开
+- PDF 导出 / 打印（WebKitGTK 有打印 API，Uno 未暴露；可先导出 HTML 交给浏览器）
+- 多窗口；侧边栏宽度拖拽；文件树右键菜单（新建/重命名/删除）
+- Windows/macOS 上的实际运行验证（本机只验证了 Linux）
+- 键盘焦点：在网页编辑器内按快捷键由 `uno-bridge.js` 转发（Ctrl+S/O/N/W/Tab/,//，Ctrl+Shift+S/O/F/B/R），页内查找栏也在网页里
