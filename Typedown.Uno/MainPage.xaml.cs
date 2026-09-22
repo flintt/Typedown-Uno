@@ -199,6 +199,14 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
 
     private bool editorPageLoaded;
     private string? lastTocJson;
+    private JsonNode? latestToc;
+
+    /// <summary>Fills the outline from the most recent editor state (it is only tracked while visible).</summary>
+    private void RefreshOutline()
+    {
+        lastTocJson = latestToc?.ToJsonString();
+        OutlineList.ItemsSource = OutlineItem.FromToc(latestToc);
+    }
     private string? pendingWordCount;
     private string? shownWordCount;
     private DispatcherTimer? wordCountTimer;
@@ -323,13 +331,15 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                         DispatcherQueue.TryEnqueue(StartWordCountTimer);
                     }
                 }
-                if (settings.SidePaneOpen && settings.SidePanePage == 1)
+                // Keep the last table of contents so switching to the outline shows it without waiting for an edit.
+                latestToc = state?["toc"];
+                if (settings.SidePaneOpen && settings.SidePanePage == 1 && !searchOpen)
                 {
-                    var tocJson = state?["toc"]?.ToJsonString();
+                    var tocJson = latestToc?.ToJsonString();
                     if (tocJson != null && tocJson != lastTocJson)
                     {
                         lastTocJson = tocJson;
-                        var items = OutlineItem.FromToc(state?["toc"]);
+                        var items = OutlineItem.FromToc(latestToc);
                         DispatcherQueue.TryEnqueue(() => OutlineList.ItemsSource = items);
                     }
                 }
@@ -548,7 +558,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         edit.Items.Add(Item("FindNext", async () => await Post("Find", new { action = "next" }), ShortcutCommand.FindNext));
         edit.Items.Add(Item("FindPrevious", async () => await Post("Find", new { action = "prev" }), ShortcutCommand.FindPrevious));
         edit.Items.Add(new MenuFlyoutSeparator());
-        edit.Items.Add(Item("SearchInFolder", () => { settings.SidePaneOpen = true; settings.SidePanePage = 2; ApplySidePane(); SearchBox.Focus(FocusState.Programmatic); }, ShortcutCommand.SearchInFolder));
+        edit.Items.Add(Item("SearchInFolder", () => OnSearchButtonClick(this, new RoutedEventArgs()), ShortcutCommand.SearchInFolder));
         edit.Items.Add(new MenuFlyoutSeparator());
         edit.Items.Add(Item("SelectAll", async () => await Post("SelectAll", null), ShortcutCommand.SelectAll));
         MainMenu.Items.Add(edit);
@@ -694,7 +704,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             case ("w", true, false): await tabs.CloseTabAsync(tabs.ActiveTab); break;
             case ("p", true, false): await PrintAsync(); break;
             case ("f", true, false): ShowFind(true); break;
-            case ("f", true, true): settings.SidePaneOpen = true; settings.SidePanePage = 2; ApplySidePane(); SearchBox.Focus(FocusState.Programmatic); break;
+            case ("f", true, true): OnSearchButtonClick(this, new RoutedEventArgs()); break;
             case ("b", true, true): settings.SidePaneOpen = !settings.SidePaneOpen; break;
             case ("r", true, true): settings.ReadOnly = !settings.ReadOnly; break;
             case ("/", true, false): settings.SourceCode = !settings.SourceCode; break;
@@ -929,7 +939,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         if (e.ClickedItem is OutlineItem item) await Post("ScrollTo", new { slug = item.Slug });
     }
 
-    private void OnSearchTextChanged(object sender, TextChangedEventArgs e)
+    private void OnSearchTextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs e)
     {
         searchCts?.Cancel();
         var query = SearchBox.Text.Trim();
@@ -1002,12 +1012,37 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
 
     // ---- side pane, theme, settings -----------------------------------------------------------------------------------
 
-    private void OnSidePageClick(object sender, RoutedEventArgs e)
+    private void OnSideNavSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
-        settings.SidePanePage = int.Parse((string)((ToggleButton)sender).Tag);
-        lastTocJson = null; // the outline is only tracked while it is visible
+        if (updatingSideNav || args.SelectedItem is not NavigationViewItem item) return;
+        settings.SidePanePage = int.Parse((string)item.Tag);
+        ApplySidePane();
+        if (settings.SidePanePage == 1) RefreshOutline();
+    }
+
+    private bool updatingSideNav;
+
+    /// <summary>Folder search takes over the pane (and comes back with its close button), as on Windows.</summary>
+    private void OnSearchButtonClick(object sender, RoutedEventArgs e)
+    {
+        settings.SidePaneOpen = true;
+        searchOpen = true;
+        ApplySidePane();
+        // Focus only sticks once the panel has been realized and laid out.
+        DispatcherQueue.TryEnqueue(async () =>
+        {
+            await Task.Delay(80);
+            SearchBox.Focus(FocusState.Programmatic);
+        });
+    }
+
+    private void OnSearchCloseClick(object sender, RoutedEventArgs e)
+    {
+        searchOpen = false;
         ApplySidePane();
     }
+
+    private bool searchOpen;
 
     private void ApplyStatusBar() => StatusBar.Visibility = settings.StatusBarOpen ? Visibility.Visible : Visibility.Collapsed;
 
@@ -1017,13 +1052,20 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         SidePane.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
         SidePaneSplitter.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
         SidePaneColumn.Width = open ? new GridLength(Math.Max(180, settings.SidePaneWidth)) : new GridLength(0);
-        var page = settings.SidePanePage;
-        FilesToggle.IsChecked = page == 0;
-        OutlineToggle.IsChecked = page == 1;
-        SearchToggle.IsChecked = page == 2;
+        var page = Math.Clamp(settings.SidePanePage, 0, 1);
+        updatingSideNav = true;
+        try
+        {
+            SideNav.SelectedItem = page == 0 ? FilesNavItem : OutlineNavItem;
+        }
+        finally
+        {
+            updatingSideNav = false;
+        }
+        SearchPanel.Visibility = searchOpen ? Visibility.Visible : Visibility.Collapsed;
+        SideNav.Visibility = searchOpen ? Visibility.Collapsed : Visibility.Visible;
         FileTree.Visibility = page == 0 ? Visibility.Visible : Visibility.Collapsed;
         OutlineList.Visibility = page == 1 ? Visibility.Visible : Visibility.Collapsed;
-        SearchPanel.Visibility = page == 2 ? Visibility.Visible : Visibility.Collapsed;
         SidePaneTitle.Visibility = page == 0 ? Visibility.Visible : Visibility.Collapsed;
         OpenFolderButton.Visibility = page == 0 ? Visibility.Visible : Visibility.Collapsed;
         if (page == 0 && workFolder == null) SidePaneStatus.Text = Loc.Get("NoFolder");
@@ -1064,7 +1106,10 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             switch (name)
             {
                 case nameof(AppSettings.Theme): ApplyTheme(post: true); break;
-                case nameof(AppSettings.SidePaneOpen) or nameof(AppSettings.SidePanePage) or nameof(AppSettings.SidePaneWidth): ApplySidePane(); break;
+                case nameof(AppSettings.SidePaneOpen) or nameof(AppSettings.SidePanePage) or nameof(AppSettings.SidePaneWidth):
+                    ApplySidePane();
+                    if (settings.SidePaneOpen && settings.SidePanePage == 1) RefreshOutline();
+                    break;
                 case nameof(AppSettings.AlwaysShowTabBar): UpdateTabBar(); break;
                 case nameof(AppSettings.StatusBarOpen): ApplyStatusBar(); break;
                 case nameof(AppSettings.WordCountMethod): lastTocJson = null; break;
@@ -1077,9 +1122,9 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
 
     private void ApplyStrings()
     {
-        FilesToggle.Content = Loc.Get("Files");
-        OutlineToggle.Content = Loc.Get("Outline");
-        SearchToggle.Content = Loc.Get("Search");
+        FilesNavItem.Content = Loc.Get("Files");
+        OutlineNavItem.Content = Loc.Get("Outline");
+        ToolTipService.SetToolTip(SearchButton, Loc.Get("SearchInFolder"));
         SearchBox.PlaceholderText = Loc.Get("SearchPlaceholder");
         OpenFolderButton.Content = Loc.Get("OpenFolder");
     }

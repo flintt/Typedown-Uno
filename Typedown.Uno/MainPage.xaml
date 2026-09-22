@@ -27,66 +27,75 @@
   <Grid x:Name="Root">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto"/>
-      <RowDefinition Height="Auto"/>
-      <RowDefinition Height="Auto"/>
       <RowDefinition Height="*"/>
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
 
     <MenuBar x:Name="MainMenu" Grid.Row="0"/>
 
-    <TabView x:Name="TabBar" Grid.Row="1" Visibility="Collapsed" IsAddTabButtonVisible="True"
-             AddTabButtonClick="OnAddTabClick" TabCloseRequested="OnTabCloseRequested" SelectionChanged="OnTabSelectionChanged">
-      <TabView.TabItemTemplate>
-        <DataTemplate x:DataType="vm:DocumentTab">
-          <TabViewItem Header="{x:Bind DisplayTitle, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ToolTip, Mode=OneWay}">
-            <TabViewItem.IconSource>
-              <FontIconSource Glyph="&#xE8A5;" FontSize="12"/>
-            </TabViewItem.IconSource>
-          </TabViewItem>
-        </DataTemplate>
-      </TabView.TabItemTemplate>
-    </TabView>
-
-
-    <Grid Grid.Row="3">
+    <Grid Grid.Row="1">
       <Grid.ColumnDefinitions>
         <ColumnDefinition x:Name="SidePaneColumn" Width="0"/>
         <ColumnDefinition Width="*"/>
       </Grid.ColumnDefinitions>
 
       <Grid x:Name="SidePane" Grid.Column="0" Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,1,0" Visibility="Collapsed">
-        <Grid.RowDefinitions>
-          <RowDefinition Height="Auto"/>
-          <RowDefinition Height="Auto"/>
-          <RowDefinition Height="*"/>
-          <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
-        <StackPanel Orientation="Horizontal" Spacing="4" Padding="8,6">
-          <ToggleButton x:Name="FilesToggle" IsChecked="True" Click="OnSidePageClick" Tag="0"/>
-          <ToggleButton x:Name="OutlineToggle" Click="OnSidePageClick" Tag="1"/>
-          <ToggleButton x:Name="SearchToggle" Click="OnSidePageClick" Tag="2"/>
-        </StackPanel>
-        <TextBlock x:Name="SidePaneTitle" Grid.Row="1" Margin="12,0,12,4" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-        <Grid Grid.Row="2">
-          <TreeView x:Name="FileTree" ItemTemplate="{StaticResource FolderItemTemplate}" SelectionMode="Single" CanDragItems="False" CanReorderItems="False"
-                    ItemInvoked="OnFileTreeItemInvoked" DoubleTapped="OnFileTreeDoubleTapped" RightTapped="OnFileTreeRightTapped"/>
-          <ListView x:Name="OutlineList" ItemTemplate="{StaticResource OutlineItemTemplate}" IsItemClickEnabled="True" ItemClick="OnOutlineItemClick" SelectionMode="None" Visibility="Collapsed" Padding="8,0"/>
-          <Grid x:Name="SearchPanel" Visibility="Collapsed">
+        <!-- Same shape as the Windows edition: "Files | Outline" as top navigation with a search button beside it. -->
+        <NavigationView x:Name="SideNav" PaneDisplayMode="Top" IsBackButtonVisible="Collapsed" IsSettingsVisible="False"
+                        SelectionChanged="OnSideNavSelectionChanged">
+          <NavigationView.Resources>
+            <SolidColorBrush x:Key="NavigationViewContentBackground" Color="Transparent"/>
+            <SolidColorBrush x:Key="NavigationViewTopPaneBackground" Color="Transparent"/>
+          </NavigationView.Resources>
+          <NavigationView.MenuItems>
+            <NavigationViewItem x:Name="FilesNavItem" Tag="0"/>
+            <NavigationViewItem x:Name="OutlineNavItem" Tag="1"/>
+          </NavigationView.MenuItems>
+          <NavigationView.PaneFooter>
+            <Button x:Name="SearchButton" Width="32" Height="32" Margin="0,0,4,0" Click="OnSearchButtonClick" Background="Transparent" BorderThickness="0">
+              <FontIcon FontSize="14" Glyph="&#xE721;"/>
+            </Button>
+          </NavigationView.PaneFooter>
+
+          <Grid>
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto"/>
-              <RowDefinition Height="Auto"/>
               <RowDefinition Height="*"/>
+              <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
-            <TextBox x:Name="SearchBox" Margin="8,0,8,4" TextChanged="OnSearchTextChanged"/>
-            <TextBlock x:Name="SearchStatus" Grid.Row="1" Margin="12,0,12,4" FontSize="12" Opacity="0.7"/>
-            <ListView x:Name="SearchResults" Grid.Row="2" ItemTemplate="{StaticResource SearchResultTemplate}" IsItemClickEnabled="True" ItemClick="OnSearchResultClick" SelectionMode="None" Padding="8,0"/>
+            <TextBlock x:Name="SidePaneTitle" Margin="12,6,12,4" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+            <Grid Grid.Row="1">
+              <TreeView x:Name="FileTree" ItemTemplate="{StaticResource FolderItemTemplate}" SelectionMode="Single" CanDragItems="False" CanReorderItems="False"
+                        ItemInvoked="OnFileTreeItemInvoked" DoubleTapped="OnFileTreeDoubleTapped" RightTapped="OnFileTreeRightTapped"/>
+              <ListView x:Name="OutlineList" ItemTemplate="{StaticResource OutlineItemTemplate}" IsItemClickEnabled="True" ItemClick="OnOutlineItemClick" SelectionMode="None" Visibility="Collapsed" Padding="8,0"/>
+            </Grid>
+            <StackPanel Grid.Row="2" Padding="8" Spacing="4">
+              <TextBlock x:Name="SidePaneStatus" FontSize="12" Opacity="0.7" TextWrapping="Wrap"/>
+              <Button x:Name="OpenFolderButton" HorizontalAlignment="Stretch" Click="OnOpenFolderClick"/>
+            </StackPanel>
           </Grid>
+        </NavigationView>
+
+        <!-- Folder search replaces the pane, like the Windows edition's SearchPane. -->
+        <Grid x:Name="SearchPanel" Visibility="Collapsed" Background="{ThemeResource LayerFillColorDefaultBrush}">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+          </Grid.RowDefinitions>
+          <Grid Height="49" Padding="8" ColumnSpacing="4" BorderThickness="0,0,0,1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <AutoSuggestBox x:Name="SearchBox" QueryIcon="Find" TextChanged="OnSearchTextChanged"/>
+            <Button Grid.Column="1" Width="32" Height="32" Click="OnSearchCloseClick" Background="Transparent" BorderThickness="0">
+              <FontIcon FontSize="10" Glyph="&#xE8BB;"/>
+            </Button>
+          </Grid>
+          <TextBlock x:Name="SearchStatus" Grid.Row="1" Margin="12,8,12,4" FontSize="12" Opacity="0.7"/>
+          <ListView x:Name="SearchResults" Grid.Row="2" ItemTemplate="{StaticResource SearchResultTemplate}" IsItemClickEnabled="True" ItemClick="OnSearchResultClick" SelectionMode="None" Padding="4,0"/>
         </Grid>
-        <StackPanel Grid.Row="3" Padding="8" Spacing="4">
-          <TextBlock x:Name="SidePaneStatus" FontSize="12" Opacity="0.7" TextWrapping="Wrap"/>
-          <Button x:Name="OpenFolderButton" HorizontalAlignment="Stretch" Click="OnOpenFolderClick"/>
-        </StackPanel>
       </Grid>
 
       <!-- Drag handle for the side pane width (WinUI has no GridSplitter). -->
@@ -94,11 +103,30 @@
               PointerPressed="OnSplitterPointerPressed" PointerMoved="OnSplitterPointerMoved" PointerReleased="OnSplitterPointerReleased"
               PointerEntered="OnSplitterPointerEntered" PointerExited="OnSplitterPointerExited"/>
 
-      <!-- The Typedown editor (React/Muya) in a WebView2; the host bridge lives in Assets/Editor/uno-bridge.js -->
-      <WebView2 x:Name="EditorView" Grid.Column="1"/>
+      <!-- The tab bar belongs to the document area, not above the side pane (same as the Windows edition). -->
+      <Grid Grid.Column="1">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <TabView x:Name="TabBar" Visibility="Collapsed" IsAddTabButtonVisible="True"
+                 AddTabButtonClick="OnAddTabClick" TabCloseRequested="OnTabCloseRequested" SelectionChanged="OnTabSelectionChanged">
+          <TabView.TabItemTemplate>
+            <DataTemplate x:DataType="vm:DocumentTab">
+              <TabViewItem Header="{x:Bind DisplayTitle, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ToolTip, Mode=OneWay}">
+                <TabViewItem.IconSource>
+                  <FontIconSource Glyph="&#xE8A5;" FontSize="12"/>
+                </TabViewItem.IconSource>
+              </TabViewItem>
+            </DataTemplate>
+          </TabView.TabItemTemplate>
+        </TabView>
+        <!-- The Typedown editor (React/Muya) in a WebView2; the host bridge lives in Assets/Editor/uno-bridge.js -->
+        <WebView2 x:Name="EditorView" Grid.Row="1"/>
+      </Grid>
     </Grid>
 
-    <Grid x:Name="StatusBar" Grid.Row="4" Padding="8,3" ColumnSpacing="12" Background="{ThemeResource LayerFillColorDefaultBrush}">
+    <Grid x:Name="StatusBar" Grid.Row="2" Padding="8,3" ColumnSpacing="12" Background="{ThemeResource LayerFillColorDefaultBrush}">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="*"/>
         <ColumnDefinition Width="Auto"/>
