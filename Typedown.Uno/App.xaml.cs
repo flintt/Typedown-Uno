@@ -12,7 +12,22 @@ public partial class App : Application
     /// </summary>
     public App()
     {
+        ConfigureLinuxWebKit();
         this.InitializeComponent();
+    }
+
+    /// <summary>
+    /// WebKitGTK >= 2.42 renders nothing (a blank white view) on systems without a usable DMABUF path — headless
+    /// X servers, VMs and some integrated GPUs. Disabling that renderer is the documented workaround and costs
+    /// nothing on machines where it would have worked.
+    /// </summary>
+    private static void ConfigureLinuxWebKit()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        if (Environment.GetEnvironmentVariable("WEBKIT_DISABLE_DMABUF_RENDERER") == null)
+            Environment.SetEnvironmentVariable("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        if (Environment.GetEnvironmentVariable("GDK_BACKEND") == null)
+            Environment.SetEnvironmentVariable("GDK_BACKEND", "x11"); // the GTK web view needs X11 even on Wayland
     }
 
     public static Window? MainWindow { get; private set; }

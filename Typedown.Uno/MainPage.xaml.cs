@@ -82,6 +82,8 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             if (workFolder == null && settings.LastFolder != null && Directory.Exists(settings.LastFolder)) SetWorkFolder(settings.LastFolder);
             if (workFolder == null && document.FilePath != null) SetWorkFolder(Path.GetDirectoryName(document.FilePath)!);
 
+            // The folder is relative to the app directory (Uno's X11 WebView joins it onto the base directory),
+            // so it must stay relative — an absolute path would be concatenated onto the base directory.
             core.SetVirtualHostNameToFolderMapping(EditorHost, "Assets/Editor", CoreWebView2HostResourceAccessKind.Allow);
             EditorView.Source = new Uri($"http://{EditorHost}/index.html");
             UpdateTitle();
