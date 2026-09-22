@@ -43,58 +43,130 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
+        // The document model is built first and never depends on the web view: if the editor fails to come up
+        // (missing WebKitGTK, a stalled native initialization) the shell must still be usable and say why.
+        ApplyStrings();
+        BuildMenus();
+        ApplyTheme(post: false);
+        ApplySidePane();
+        transport = new EditorTransport(PostToEditor);
+        document = new DocumentViewModel(transport, this, settings);
+        tabs = new TabsViewModel(document, settings);
+        document.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(UpdateTitle);
+        document.RunOnUi += work => DispatcherQueue.TryEnqueue(async () => await work());
+        document.FileOpened += path => DispatcherQueue.TryEnqueue(() => OnFileOpened(path));
+        tabs.TabsChanged += () => DispatcherQueue.TryEnqueue(UpdateTabBar);
+        tabs.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(UpdateTabBar);
+        TabBar.TabItemsSource = tabs.Tabs;
+        settings.PropertyChanged += OnSettingChanged;
+        RegisterHostFunctions(transport);
+        transport.MessageReceived += OnEditorMessage;
+
+        // Documents are staged before the page loads: the editor's first GetSettings carries the active one.
+        if (startupFile != null)
+        {
+            await tabs.OpenFileAsync(startupFile);
+        }
+        else if (settings.RestoreSession)
+        {
+            var folder = await tabs.RestoreSessionAsync();
+            if (folder != null && Directory.Exists(folder)) SetWorkFolder(folder);
+        }
+        if (workFolder == null && settings.LastFolder != null && Directory.Exists(settings.LastFolder)) SetWorkFolder(settings.LastFolder);
+        if (workFolder == null && document.FilePath != null) SetWorkFolder(Path.GetDirectoryName(document.FilePath)!);
+        UpdateTitle();
+        UpdateTabBar();
+        HookWindowClosing();
+
+        await StartEditorAsync();
+    }
+
+    /// <summary>
+    /// Brings the web view up. <c>EnsureCoreWebView2Async</c> is only awaited with a timeout: on some Linux setups
+    /// it never completes even though the native view works, so the code falls back to waiting for the control to
+    /// publish its CoreWebView2 and, failing that, still navigates (Uno creates the view when Source is set).
+    /// </summary>
+    private async Task StartEditorAsync()
+    {
+        Services.Log.Write("shell ready, initializing web view");
         try
         {
-            ApplyStrings();
-            BuildMenus();
-            ApplyTheme(post: false);
-            ApplySidePane();
-            await EditorView.EnsureCoreWebView2Async();
-            var core = EditorView.CoreWebView2;
-            transport = new EditorTransport(PostToEditor);
-            document = new DocumentViewModel(transport, this, settings);
-            tabs = new TabsViewModel(document, settings);
-            document.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(UpdateTitle);
-            document.RunOnUi += work => DispatcherQueue.TryEnqueue(async () => await work());
-            document.FileOpened += path => DispatcherQueue.TryEnqueue(() => OnFileOpened(path));
-            tabs.TabsChanged += () => DispatcherQueue.TryEnqueue(UpdateTabBar);
-            tabs.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(UpdateTabBar);
-            TabBar.TabItemsSource = tabs.Tabs;
-            settings.PropertyChanged += OnSettingChanged;
-            RegisterHostFunctions(transport);
-            transport.MessageReceived += OnEditorMessage;
-            core.WebMessageReceived += (_, args) =>
-            {
-                var raw = EditorTransport.GetRawMessage(args);
-                if (raw != null) transport.OnWebMessage(raw);
-            };
-
-            // Documents are staged before the page loads: the editor's first GetSettings carries the active one.
-            if (startupFile != null)
-            {
-                await tabs.OpenFileAsync(startupFile);
-            }
-            else if (settings.RestoreSession)
-            {
-                var folder = await tabs.RestoreSessionAsync();
-                if (folder != null && Directory.Exists(folder)) SetWorkFolder(folder);
-            }
-            if (workFolder == null && settings.LastFolder != null && Directory.Exists(settings.LastFolder)) SetWorkFolder(settings.LastFolder);
-            if (workFolder == null && document.FilePath != null) SetWorkFolder(Path.GetDirectoryName(document.FilePath)!);
-
-            // The folder is relative to the app directory (Uno's X11 WebView joins it onto the base directory),
-            // so it must stay relative — an absolute path would be concatenated onto the base directory.
-            core.SetVirtualHostNameToFolderMapping(EditorHost, "Assets/Editor", CoreWebView2HostResourceAccessKind.Allow);
-            EditorView.Source = new Uri($"http://{EditorHost}/index.html");
-            UpdateTitle();
-            UpdateTabBar();
-            HookWindowClosing();
+            var ensure = EditorView.EnsureCoreWebView2Async().AsTask();
+            if (await Task.WhenAny(ensure, Task.Delay(TimeSpan.FromSeconds(5))) != ensure)
+                Services.Log.Write("EnsureCoreWebView2Async did not complete in 5s, continuing");
+            else
+                await ensure;
         }
         catch (Exception ex)
         {
-            SetStatus($"WebView2 failed: {ex.Message}");
+            Services.Log.Error("EnsureCoreWebView2Async failed", ex);
         }
+
+        var core = EditorView.CoreWebView2;
+        for (var i = 0; core == null && i < 50; i++)
+        {
+            await Task.Delay(200);
+            core = EditorView.CoreWebView2;
+        }
+        if (core == null)
+        {
+            var missing = Services.Log.MissingLinuxLibraries();
+            Services.Log.Write($"no CoreWebView2 after 15s; the editor cannot start (missing libs: {(missing.Count == 0 ? "none" : string.Join(", ", missing))})");
+            SetStatus(missing.Count > 0
+                ? $"Editor failed to start: missing {string.Join(", ", missing)} — run install-linux.sh"
+                : $"Editor failed to start — see {Services.Log.Path}");
+            return;
+        }
+
+        Services.Log.Write("web view initialized");
+        core.WebMessageReceived += (_, args) =>
+        {
+            var raw = EditorTransport.GetRawMessage(args);
+            if (raw != null) transport!.OnWebMessage(raw);
+        };
+        core.NavigationCompleted += (_, args) =>
+        {
+            editorPageLoaded |= args.IsSuccess;
+            Services.Log.Write(args.IsSuccess ? "editor page loaded" : $"navigation failed: {args.WebErrorStatus}");
+        };
+        // The folder is relative to the app directory (Uno's X11 WebView joins it onto the base directory),
+        // so it must stay relative — an absolute path would be concatenated onto the base directory.
+        core.SetVirtualHostNameToFolderMapping(EditorHost, "Assets/Editor", CoreWebView2HostResourceAccessKind.Allow);
+        EditorView.Source = new Uri($"http://{EditorHost}/index.html");
+        Services.Log.Write("navigating to the editor page");
+
+        // Fallback: where the virtual host mapping does not take effect, load the page straight from disk. The
+        // editor only needs same-origin access to its own folder, which a file:// URL gives it.
+        await Task.Delay(TimeSpan.FromSeconds(8));
+        if (editorPageLoaded || transport == null) return;
+        var indexPath = Path.Combine(AppContext.BaseDirectory, "Assets", "Editor", "index.html");
+        Services.Log.Write($"virtual host did not load; falling back to {indexPath} (exists={File.Exists(indexPath)})");
+        try
+        {
+            EditorView.Source = new Uri(indexPath);
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Error("file fallback failed", ex);
+        }
+        await Task.Delay(TimeSpan.FromSeconds(8));
+        if (editorPageLoaded) return;
+        try
+        {
+            var probe = await EditorView.ExecuteScriptAsync("document.readyState + '|' + location.href");
+            Services.Log.Write($"web view probe: {probe}");
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Error("web view probe failed", ex);
+        }
+        var missingLibs = Services.Log.MissingLinuxLibraries();
+        SetStatus(missingLibs.Count > 0
+            ? $"Editor did not load: missing {string.Join(", ", missingLibs)} — run install-linux.sh"
+            : $"Editor did not load — see {Services.Log.Path}");
     }
+
+    private bool editorPageLoaded;
 
     // ---- editor bridge ------------------------------------------------------------------------------------------
 
@@ -161,6 +233,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         switch (name)
         {
             case "FileLoaded":
+                Services.Log.Write($"editor handshake done ({args?["text"]?.GetValue<string>()?.Length ?? 0} chars)");
                 DispatcherQueue.TryEnqueue(UpdateTitle);
                 break;
             case "StateChange":
@@ -671,7 +744,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private void SetStatus(string text)
     {
         _ = DispatcherQueue.TryEnqueue(() => StatusText.Text = text);
-        Console.WriteLine($"[Typedown.Uno] {text}");
+        Services.Log.Write(text);
     }
 
     // ---- IHostUi ------------------------------------------------------------------------------------------------------

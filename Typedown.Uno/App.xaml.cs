@@ -13,6 +13,9 @@ public partial class App : Application
     public App()
     {
         ConfigureLinuxWebKit();
+        Services.Log.WriteStartup();
+        AppDomain.CurrentDomain.UnhandledException += (_, e) => Services.Log.Write($"unhandled: {e.ExceptionObject}");
+        TaskScheduler.UnobservedTaskException += (_, e) => Services.Log.Write($"unobserved: {e.Exception.Message}");
         this.InitializeComponent();
     }
 

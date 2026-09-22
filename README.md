@@ -19,11 +19,24 @@
 
 | 平台 | 依赖 |
 |---|---|
-| Linux x64 | `libgtk-3-0`、`libwebkit2gtk-4.1-0`（Ubuntu 24.04 / Debian 12 及以上）；Wayland 桌面请设置 `GDK_BACKEND=x11` |
+| Linux x64 | `libgtk-3-0`、`libwebkit2gtk-4.1-0`（Ubuntu 24.04 / Debian 12 及以上）；**用 `sudo ./install-linux.sh` 安装**，它会建好下面说的符号链接 |
 | Windows 10/11 x64 | WebView2 运行时（Windows 11 自带） |
 | macOS（Apple Silicon） | 无；首次运行需右键 → 打开 |
 
-设置与会话保存在 `~/.local/share/Typedown.Uno/`（Windows：`%LOCALAPPDATA%\Typedown.Uno\`）。
+设置、会话和运行日志（`debug.log`）保存在 `~/.local/share/Typedown.Uno/`（Windows：`%LOCALAPPDATA%\Typedown.Uno\`）。
+
+### Linux 安装说明（重要）
+
+Uno 的 GTK 网页视图按**不带版本号**的库名（`libgdk-3.so`、`libsoup-3.0.so`、`libwebkit2gtk-4.1.so` 等）做 P/Invoke，
+而这些符号链接只随 `-dev` 包安装。普通桌面上缺了它们，程序能打开、菜单能点，但**编辑区一直空白**
+（网页视图初始化永远不会完成）。`install-linux.sh` 会检测并补上这些链接（不需要装 `-dev` 包）：
+
+```
+tar -xzf Typedown-linux-x64.tar.gz -C /tmp/typedown && sudo ./install-linux.sh /tmp/Typedown-linux-x64.tar.gz
+typedown ~/notes/a.md
+```
+
+程序启动时也会自检，缺哪个库会写进 `debug.log` 并显示在状态栏。
 
 ## 快捷键
 
