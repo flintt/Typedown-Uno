@@ -55,6 +55,18 @@ jobs:
           fi
           ls -la ../dist
 
+      - name: Linux packages (deb, AppImage)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get install -y -qq fakeroot >/dev/null
+          # appimagetool is a single binary; skipped automatically when the download fails
+          curl -fsSL -o /tmp/appimagetool https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage \
+            && chmod +x /tmp/appimagetool && sudo mv /tmp/appimagetool /usr/local/bin/appimagetool || true
+          version="${GITHUB_REF_NAME#v}"
+          [[ "$version" =~ ^[0-9] ]] || version="0.0.0-$(date +%Y%m%d)"
+          ./packaging/build-linux-packages.sh "publish/Typedown-${{ matrix.name }}" "$version" dist
+
       - uses: actions/upload-artifact@v4
         with:
           name: Typedown-${{ matrix.name }}

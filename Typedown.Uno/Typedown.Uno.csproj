@@ -28,11 +28,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- App icon: the original Typedown logo instead of the template's placeholder. -->
+    <!-- App icon: the original Typedown logo instead of the template's placeholder. The sources live outside
+         Assets/ because everything under Assets/Icons is also produced by Resizetizer (duplicate publish paths). -->
     <UnoIcon Remove="Assets/Icons/icon.svg" />
-    <UnoIcon Include="Assets/Icons/icon.png" ForegroundFile="Assets/Icons/icon_foreground.png" Color="#F3F3F3" ForegroundScale="0.7" />
-    <!-- Shipped as a plain file too: the Linux desktop entry and the installer need a real PNG. -->
-    <Content Include="Assets/Icons/icon.png" Link="Assets/typedown.png" CopyToOutputDirectory="PreserveNewest" />
+    <UnoIcon Include="Icons/icon.png" ForegroundFile="Icons/icon_foreground.png" Color="#F3F3F3" ForegroundScale="0.7" />
+    <!-- A plain copy for the Linux desktop entry and the packages. -->
+    <None Include="Icons/icon.png" Link="Assets/typedown.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

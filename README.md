@@ -18,31 +18,31 @@
 
 ## 运行
 
-从 [Releases](../../releases) 下载对应平台的压缩包，解压后运行 `Typedown.Uno`（Windows 为 `Typedown.Uno.exe`）。可把 `.md` 文件路径作为参数传入。
+从 [Releases](../../releases) 下载对应平台的包。`.NET 运行时已经打进包里`，不需要另外安装。
 
-| 平台 | 依赖 |
-|---|---|
-| Linux x64 | `libgtk-3-0`、`libwebkit2gtk-4.1-0`（Ubuntu 24.04 / Debian 12 及以上）；**用 `sudo ./install-linux.sh` 安装**，它会建好下面说的符号链接 |
-| Windows 10/11 x64 | WebView2 运行时（Windows 11 自带） |
-| macOS（Apple Silicon） | 无；首次运行需右键 → 打开 |
+| 平台 | 发布格式 | 运行时依赖（系统提供） |
+|---|---|---|
+| Linux x64 | `.deb`、`.AppImage`、`.tar.gz`（便携） | `libgtk-3-0`、`libwebkit2gtk-4.1-0`、`libx11-6`；Ubuntu 22.04+/Debian 12+ 装上即可（`.deb` 会自动拉） |
+| Windows 10/11 x64 | `.zip`（便携，解压即用） | WebView2 运行时（Win11 自带，Win10 多数已随 Edge 安装） |
+| macOS（Apple Silicon） | `.tar.gz` | 无；首次运行右键 → 打开（未签名） |
+
+Linux 安装：`sudo dpkg -i typedown_*.deb` 或给 AppImage 加执行权限直接运行；便携版解压后 `./Typedown.Uno`。
 
 设置、会话和运行日志（`debug.log`）保存在 `~/.local/share/Typedown.Uno/`（Windows：`%LOCALAPPDATA%\Typedown.Uno\`）。
 
-### Linux 安装说明（重要）
+### Linux 说明
 
-Uno 的 GTK 网页视图按**不带版本号**的库名（`libgdk-3.so`、`libsoup-3.0.so`、`libwebkit2gtk-4.1.so` 等）做 P/Invoke，
-而这些符号链接只随 `-dev` 包安装。普通桌面上缺了它们，程序能打开、菜单能点，但**编辑区一直空白**
-（网页视图初始化永远不会完成）。`install-linux.sh` 会检测并补上这些链接（不需要装 `-dev` 包）：
+Uno 的 GTK 网页视图按**不带版本号**的库名（`libgdk-3.so`、`libsoup-3.0.so`、`libwebkit2gtk-4.1.so`）做 P/Invoke，
+而这些符号链接只随 `-dev` 包安装；缺了它们，程序能开、菜单能点，但**编辑区一直空白**。
+本程序启动时会装一个库名解析器，自动映射到带版本号的 `.so.0`，所以**不需要装 `-dev` 包、也不用建符号链接**。
+（`install-linux.sh` 仍然保留，用于从 tar.gz 做系统级安装。）
 
-```
-tar -xzf Typedown-linux-x64.tar.gz -C /tmp/typedown && sudo ./install-linux.sh /tmp/Typedown-linux-x64.tar.gz
-typedown ~/notes/a.md
-```
-
-程序启动时也会自检，缺哪个库会写进 `debug.log` 并显示在状态栏。
+Wayland 桌面下 GTK 网页视图需要 X11，启动脚本已经设好 `GDK_BACKEND=x11`。
+运行日志在 `~/.local/share/Typedown.Uno/debug.log`，启动时会记录环境和缺失的库。
 
 ## 快捷键
 
+全部快捷键都可以在 设置 → 快捷键 里改（点输入框按新组合，Esc 清除，↺ 恢复默认）。默认值：
 Ctrl+N 新建标签 · Ctrl+P 打印/导出 PDF · Ctrl+O 打开 · Ctrl+Shift+O 打开文件夹 · Ctrl+S 保存 · Ctrl+Shift+S 另存为 · Ctrl+W 关闭标签 · Ctrl+Tab / Ctrl+Shift+Tab 切换标签 · Ctrl+F 查找 · Ctrl+Shift+F 文件夹搜索 · Ctrl+Shift+B 侧边栏 · Ctrl+Shift+R 阅读模式 · Ctrl+/ 源代码模式 · Ctrl+, 设置。编辑快捷键（加粗、斜体、撤销……）由编辑器本身处理。
 
 ## 开发
@@ -61,6 +61,6 @@ dotnet publish Typedown.Uno/Typedown.Uno.csproj -f net9.0-desktop -c Release -r 
 
 - **文件对话框用的是程序内置的选择器**（Linux）。Uno 的系统选择器依赖 XDG desktop portal，很多桌面上装不全，结果是对话框根本不出现，所以这里一律用自绘的选择器；Windows / macOS 仍用系统原生对话框。
 - PDF 走"在浏览器中打印"，没有直接生成 PDF（WebKitGTK 的打印 API 没有通过 Uno 暴露出来）。
-- 图床上传、逐条快捷键自定义未实现。
+- 图床上传未实现（按需求暂不做）。
 - 单窗口；多个文档以标签形式打开。
 - Linux 上编辑器是一个原生 WebKit 窗口，因此无法与 XAML 控件重叠动画；对话框会覆盖在它上面。
