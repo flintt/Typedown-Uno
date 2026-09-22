@@ -22,7 +22,7 @@
     }
     // Shell shortcuts pressed while the (native) web view has focus never reach the host window on Linux/macOS,
     // so forward the ones the shell handles as a "Shortcut" message. The editor keeps its own (Ctrl+B/I/…).
-    var forwarded = { 's': true, 'o': true, 'n': true, 'w': true, 'tab': true, ',': true, '/': true, 'b': 'shift', 'r': 'shift', 'f': 'shift' };
+    var forwarded = { 's': true, 'o': true, 'n': true, 'w': true, 'p': true, 'tab': true, ',': true, '/': true, 'b': 'shift', 'r': 'shift', 'f': 'shift' };
     window.addEventListener('keydown', function (e) {
         var ctrl = e.ctrlKey || e.metaKey;
         var key = e.key === 'Tab' ? 'tab' : e.key.toLowerCase();
@@ -109,6 +109,53 @@
         var editor = document.getElementById('ag-editor-id') || document.querySelector('.CodeMirror textarea');
         if (editor) editor.focus();
     }
+
+    // Files dropped on the editor: the page is a native web view, so the host never sees the drop. WebKit exposes
+    // the dropped paths as text/uri-list, which is enough for the host to open documents and insert images.
+    window.addEventListener('dragover', function (e) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }, true);
+    window.addEventListener('drop', function (e) {
+        var list = e.dataTransfer && e.dataTransfer.getData('text/uri-list');
+        if (!list) return;
+        var paths = list.split(/\r?\n/)
+            .filter(function (l) { return l && l.indexOf('#') !== 0 && l.indexOf('file://') === 0; })
+            .map(function (l) { return decodeURIComponent(l.replace(/^file:\/\//, '')); });
+        if (!paths.length) return;
+        e.preventDefault();
+        e.stopPropagation();
+        send(JSON.stringify({ type: 'message', name: 'FilesDropped', args: { paths: paths } }));
+    }, true);
+
+    function hasImage(items) {
+        for (var i = 0; i < items.length; i++) if (items[i].kind === 'file' && items[i].type.indexOf('image/') === 0) return true;
+        return false;
+    }
+
+    // Pasted images are handed to the host, which stores them next to the document and inserts a link; without
+    // this the editor would embed a multi-megabyte data: URL in the Markdown.
+    window.addEventListener('paste', function (e) {
+        var items = e.clipboardData && e.clipboardData.items;
+        var hasText = false;
+        for (var k = 0; items && k < items.length; k++) if (items[k].kind === 'string') hasText = true;
+        if (!items || !items.length || (!hasText && !hasImage(items))) {
+            // WebKit does not always expose clipboard images to the page (it sees nothing at all in some
+            // sessions); let the host look at the system clipboard instead.
+            send(JSON.stringify({ type: 'message', name: 'ClipboardImageRequest', args: {} }));
+            return;
+        }
+        for (var i = 0; i < items.length; i++) {
+            if (items[i].kind !== 'file' || items[i].type.indexOf('image/') !== 0) continue;
+            var file = items[i].getAsFile();
+            if (!file) continue;
+            e.preventDefault();
+            e.stopPropagation();
+            var reader = new FileReader();
+            reader.onload = function () {
+                send(JSON.stringify({ type: 'message', name: 'ImagePasted', args: { dataUrl: reader.result } }));
+            };
+            reader.readAsDataURL(file);
+            return;
+        }
+    }, true);
 
     window.__unoDeliver = function (data) {
         try {

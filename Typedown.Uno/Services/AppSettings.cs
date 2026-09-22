@@ -15,6 +15,9 @@ public enum FolderStartupAction { None, OpenLast, OpenFixed }
 
 public enum WordCountMethod { Words, Characters, Paragraphs }
 
+/// <summary>What happens to an image that is inserted, pasted or dropped into a document.</summary>
+public enum ImageInsertAction { CopyToFolder, KeepPath }
+
 /// <summary>
 /// User settings, persisted as JSON under the app data folder. Changing a property raises PropertyChanged and
 /// schedules a save; the editor-facing subset is pushed to the WebView through "SettingsChanged".
@@ -144,6 +147,20 @@ public sealed class AppSettings : INotifyPropertyChanged
 
     private bool openFolderAfterExport = true;
     public bool OpenFolderAfterExport { get => openFolderAfterExport; set => Set(ref openFolderAfterExport, value); }
+
+    // ---- images ----
+    private ImageInsertAction imageAction = ImageInsertAction.CopyToFolder;
+    public ImageInsertAction ImageAction { get => imageAction; set => Set(ref imageAction, value); }
+
+    private string imageCopyPath = "./${filename}.assets";
+    /// <summary>Folder template for copied images; supports ${filename} ${filedir} ${year} ${month} ${day}.</summary>
+    public string ImageCopyPath { get => imageCopyPath; set => Set(ref imageCopyPath, value); }
+
+    private bool preferRelativeImagePaths = true;
+    public bool PreferRelativeImagePaths { get => preferRelativeImagePaths; set => Set(ref preferRelativeImagePaths, value); }
+
+    private bool encodeImageLinks = true;
+    public bool EncodeImageLinks { get => encodeImageLinks; set => Set(ref encodeImageLinks, value); }
 
     // find bar options (sent to the editor with every search)
     private bool findCaseSensitive;

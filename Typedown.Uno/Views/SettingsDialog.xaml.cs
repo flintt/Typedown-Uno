@@ -61,6 +61,13 @@ public sealed partial class SettingsDialog : ContentDialog
         Toggle("AutoPairMarkdown", settings.AutoPairMarkdownSyntax, v => settings.AutoPairMarkdownSyntax = v);
         MultilineText("CustomCss", settings.CustomCss, v => settings.CustomCss = v);
 
+        Header("ImageSection");
+        Combo("ImageAction", new[] { Loc.Get("ImageCopy"), Loc.Get("ImageKeep") }, (int)settings.ImageAction, i => settings.ImageAction = (ImageInsertAction)i);
+        Text("ImageCopyPath", settings.ImageCopyPath, v => settings.ImageCopyPath = v, hint: "./${filename}.assets");
+        Container.Children.Add(new TextBlock { Text = Loc.Get("ImageCopyPathHint"), Opacity = 0.6, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4) });
+        Toggle("PreferRelativeImagePaths", settings.PreferRelativeImagePaths, v => settings.PreferRelativeImagePaths = v);
+        Toggle("EncodeImageLinks", settings.EncodeImageLinks, v => settings.EncodeImageLinks = v);
+
         Header("FindSection");
         Toggle("FindCaseSensitive", settings.FindCaseSensitive, v => settings.FindCaseSensitive = v);
         Toggle("FindWholeWord", settings.FindWholeWord, v => settings.FindWholeWord = v);
@@ -133,12 +140,23 @@ public sealed partial class SettingsDialog : ContentDialog
         var button = new Button { Content = Loc.Get("Browse") };
         button.Click += async (_, _) =>
         {
-            var picker = new FolderPicker { SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
-            picker.FileTypeFilter.Add("*");
-            var folder = await picker.PickSingleFolderAsync();
-            if (folder?.Path == null) return;
-            set(folder.Path);
-            text.Text = folder.Path;
+            // Same reason as in MainPage: the platform folder picker needs a desktop portal on Linux.
+            string? path;
+            if (OperatingSystem.IsLinux())
+            {
+                var dialog = new FilePickerDialog(FilePickerDialog.PickerMode.Folder, get() ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)) { XamlRoot = XamlRoot, RequestedTheme = RequestedTheme };
+                await dialog.ShowAsync();
+                path = dialog.SelectedPath;
+            }
+            else
+            {
+                var picker = new FolderPicker { SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
+                picker.FileTypeFilter.Add("*");
+                path = (await picker.PickSingleFolderAsync())?.Path;
+            }
+            if (path == null) return;
+            set(path);
+            text.Text = path;
         };
         var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { text, button } };
         Container.Children.Add(Row(key, panel));

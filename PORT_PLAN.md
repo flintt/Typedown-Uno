@@ -60,8 +60,12 @@ xvfb-run -a dotnet run --project Typedown.Uno/Typedown.Uno.csproj -f net9.0-desk
 
 ## 里程碑之后的待办
 
-- 图片：插入本地图片（复制到文档目录）、粘贴图片、拖放文件到窗口打开
-- PDF 导出 / 打印（WebKitGTK 有打印 API，Uno 未暴露；可先导出 HTML 交给浏览器）
-- 多窗口；侧边栏宽度拖拽；文件树右键菜单（新建/重命名/删除）
-- Windows/macOS 上的实际运行验证（本机只验证了 Linux）
-- 键盘焦点：在网页编辑器内按快捷键由 `uno-bridge.js` 转发（Ctrl+S/O/N/W/Tab/,//，Ctrl+Shift+S/O/F/B/R），页内查找栏也在网页里
+已完成（2026-09-22）：图片插入/粘贴/拖入、拖放打开文件与文件夹、文件树右键菜单、侧栏宽度拖拽、
+打印/导出 PDF（浏览器打印）、内置文件选择器（绕开 XDG portal 依赖）、设置项补齐。
+
+仍未做：
+- 图床上传（按用户要求暂不做）
+- 逐条快捷键自定义（Windows 版有 76 条可配置快捷键，这里是固定绑定）
+- 多窗口（目前单窗口 + 多标签）
+- Windows / macOS 上的实际运行验证（CI 能出包，但没有真机点过）
+- 键盘焦点：在网页编辑器内按快捷键由 `uno-bridge.js` 转发（Ctrl+S/O/N/W/P/Tab/,//，Ctrl+Shift+S/O/F/B/R），页内查找栏也在网页里

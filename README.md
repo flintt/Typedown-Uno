@@ -10,7 +10,10 @@
 - 文件：打开/保存/另存为（系统对话框）、原子写入、外部修改检测、自动保存、最近文件、记住每个文件的光标和滚动位置
 - 查找：Ctrl+F 页内查找（高亮、上一个/下一个）
 - 主题：跟随系统 / 浅色 / 深色 / 纯黑；界面语言：中文（简体）/ English
-- 导出 HTML；一键分享到 HedgeDoc（1.x，匿名或邮箱登录，可生成只读链接）
+- 图片：插入本地图片、粘贴截图、拖入图片文件——都会按设置复制到文档旁的 `${filename}.assets` 并写成相对路径
+- 拖放：把 .md 文件拖进窗口打开为标签，拖文件夹打开为工作区
+- 文件树右键：新建文件/文件夹、重命名、删除、复制路径、在文件管理器中打开、刷新；侧栏宽度可拖拽
+- 导出 HTML、打印/导出 PDF（在浏览器中打印）；一键分享到 HedgeDoc（1.x，匿名或邮箱登录，可生成只读链接）
 - 设置对话框（Ctrl+,）：字号、行高、编辑区宽度、列表缩进、表格对齐、拼写检查等，改动即时生效
 
 ## 运行
@@ -40,7 +43,7 @@ typedown ~/notes/a.md
 
 ## 快捷键
 
-Ctrl+N 新建标签 · Ctrl+O 打开 · Ctrl+Shift+O 打开文件夹 · Ctrl+S 保存 · Ctrl+Shift+S 另存为 · Ctrl+W 关闭标签 · Ctrl+Tab / Ctrl+Shift+Tab 切换标签 · Ctrl+F 查找 · Ctrl+Shift+F 文件夹搜索 · Ctrl+Shift+B 侧边栏 · Ctrl+Shift+R 阅读模式 · Ctrl+/ 源代码模式 · Ctrl+, 设置。编辑快捷键（加粗、斜体、撤销……）由编辑器本身处理。
+Ctrl+N 新建标签 · Ctrl+P 打印/导出 PDF · Ctrl+O 打开 · Ctrl+Shift+O 打开文件夹 · Ctrl+S 保存 · Ctrl+Shift+S 另存为 · Ctrl+W 关闭标签 · Ctrl+Tab / Ctrl+Shift+Tab 切换标签 · Ctrl+F 查找 · Ctrl+Shift+F 文件夹搜索 · Ctrl+Shift+B 侧边栏 · Ctrl+Shift+R 阅读模式 · Ctrl+/ 源代码模式 · Ctrl+, 设置。编辑快捷键（加粗、斜体、撤销……）由编辑器本身处理。
 
 ## 开发
 
@@ -56,6 +59,8 @@ dotnet publish Typedown.Uno/Typedown.Uno.csproj -f net9.0-desktop -c Release -r 
 
 ## 已知限制
 
-- 图片插入/上传、PDF 导出、打印、拖放打开文件尚未实现（HTML 导出可用，可在浏览器里打印为 PDF）。
+- **文件对话框用的是程序内置的选择器**（Linux）。Uno 的系统选择器依赖 XDG desktop portal，很多桌面上装不全，结果是对话框根本不出现，所以这里一律用自绘的选择器；Windows / macOS 仍用系统原生对话框。
+- PDF 走"在浏览器中打印"，没有直接生成 PDF（WebKitGTK 的打印 API 没有通过 Uno 暴露出来）。
+- 图床上传、逐条快捷键自定义未实现。
 - 单窗口；多个文档以标签形式打开。
 - Linux 上编辑器是一个原生 WebKit 窗口，因此无法与 XAML 控件重叠动画；对话框会覆盖在它上面。

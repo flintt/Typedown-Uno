@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -259,8 +260,17 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             if (path != null)
             {
                 await SafeFile.WriteAllTextAtomicAsync(path, html);
-                SetStatus(Loc.Format("Exported", path));
-                if (settings.OpenFolderAfterExport) OpenContainingFolder(path);
+                if (path == printAfterExport)
+                {
+                    printAfterExport = null;
+                    OpenPath(path); // the browser's print dialog does the printing / "save as PDF"
+                    SetStatus(Loc.Get("PrintOpened"));
+                }
+                else
+                {
+                    SetStatus(Loc.Format("Exported", path));
+                    if (settings.OpenFolderAfterExport) OpenContainingFolder(path);
+                }
             }
             return (object?)true;
         });
@@ -311,6 +321,17 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                 var uri = args?["uri"]?.GetValue<string>();
                 if (uri != null) DispatcherQueue.TryEnqueue(async () => { try { await Launcher.LaunchUriAsync(new Uri(uri)); } catch { } });
                 break;
+            case "FilesDropped":
+                var dropped = args?["paths"]?.AsArray().Select(p => p?.GetValue<string>()).Where(p => p != null).Select(p => p!).ToList();
+                if (dropped is { Count: > 0 }) DispatcherQueue.TryEnqueue(async () => await OpenDroppedAsync(dropped));
+                break;
+            case "ClipboardImageRequest":
+                DispatcherQueue.TryEnqueue(async () => await InsertClipboardImageAsync());
+                break;
+            case "ImagePasted":
+                var dataUrl = args?["dataUrl"]?.GetValue<string>();
+                if (dataUrl != null) DispatcherQueue.TryEnqueue(async () => await InsertPastedImageAsync(dataUrl));
+                break;
             case "Shortcut":
                 var key = args?["key"]?.GetValue<string>() ?? "";
                 var ctrl = args?["ctrl"]?.GetValue<bool>() ?? false;
@@ -318,6 +339,157 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                 DispatcherQueue.TryEnqueue(async () => await HandleShortcutAsync(key, ctrl, shift));
                 break;
         }
+    }
+
+    // ---- images and drops ---------------------------------------------------------------------------------------
+
+    /// <summary>Documents are opened as tabs; images are stored next to the document and linked.</summary>
+    private async Task OpenDroppedAsync(IReadOnlyList<string> paths)
+    {
+        if (tabs == null || document == null) return;
+        foreach (var path in paths)
+        {
+            try
+            {
+                if (Directory.Exists(path))
+                {
+                    SetWorkFolder(path, explicitChoice: true);
+                    settings.SidePaneOpen = true;
+                    settings.SidePanePage = 0;
+                    ApplySidePane();
+                }
+                else if (ImagePaths.IsImageFile(path))
+                {
+                    await InsertImageFileAsync(path);
+                }
+                else if (File.Exists(path))
+                {
+                    await tabs.OpenFileAsync(path);
+                }
+            }
+            catch (Exception ex)
+            {
+                Services.Log.Error($"drop {path}", ex);
+                await ShowErrorAsync(Loc.Get("Error"), ex.Message);
+            }
+        }
+    }
+
+    private async Task InsertImageFileAsync(string path)
+    {
+        if (document == null) return;
+        try
+        {
+            var link = ImagePaths.PlaceImage(path, document.FilePath, settings);
+            await PostInsertImage(link, Path.GetFileNameWithoutExtension(path));
+            SetStatus(link);
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Error("insert image", ex);
+            await ShowErrorAsync(Loc.Get("Error"), ex.Message);
+        }
+    }
+
+    /// <summary>Reads an image from the system clipboard (the page could not) and inserts it.</summary>
+    private async Task InsertClipboardImageAsync()
+    {
+        if (document == null) return;
+        try
+        {
+            var view = Clipboard.GetContent();
+            if (view == null) return;
+            byte[]? bytes = null;
+            var extension = ".png";
+            if (view.Contains(StandardDataFormats.Bitmap))
+            {
+                var reference = await view.GetBitmapAsync();
+                using var stream = await reference.OpenReadAsync();
+                bytes = await ReadAllAsync(stream);
+            }
+            else
+            {
+                // X11 clipboards hand out the raw MIME type instead of the WinRT bitmap format.
+                var format = view.AvailableFormats.FirstOrDefault(f => f.StartsWith("image/", StringComparison.OrdinalIgnoreCase));
+                if (format == null)
+                {
+                    Services.Log.Write($"clipboard has no image (formats: {string.Join(", ", view.AvailableFormats)})");
+                    return;
+                }
+                extension = format switch { "image/jpeg" => ".jpg", "image/gif" => ".gif", "image/webp" => ".webp", "image/bmp" => ".bmp", _ => ".png" };
+                var data = await view.GetDataAsync(format);
+                bytes = data switch
+                {
+                    byte[] raw => raw,
+                    Windows.Storage.Streams.IRandomAccessStream stream => await ReadAllAsync(stream),
+                    Windows.Storage.Streams.IBuffer buffer => buffer.ToArray(),
+                    string text when text.StartsWith("data:", StringComparison.Ordinal) => ImagePaths.DecodeDataUrl(text)?.bytes,
+                    _ => null,
+                };
+                if (bytes == null)
+                {
+                    Services.Log.Write($"clipboard image format {format} returned {data?.GetType().Name ?? "null"}");
+                    return;
+                }
+            }
+            var link = ImagePaths.SaveImageBytes(bytes, extension, document.FilePath, settings);
+            await PostInsertImage(link, "image");
+            SetStatus(link);
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Error("clipboard image", ex);
+        }
+    }
+
+    private static async Task<byte[]> ReadAllAsync(Windows.Storage.Streams.IRandomAccessStream stream)
+    {
+        var bytes = new byte[stream.Size];
+        using var reader = new Windows.Storage.Streams.DataReader(stream.GetInputStreamAt(0));
+        await reader.LoadAsync((uint)stream.Size);
+        reader.ReadBytes(bytes);
+        return bytes;
+    }
+
+    private async Task InsertPastedImageAsync(string dataUrl)
+    {
+        if (document == null) return;
+        try
+        {
+            var decoded = ImagePaths.DecodeDataUrl(dataUrl);
+            if (decoded == null) return;
+            var link = ImagePaths.SaveImageBytes(decoded.Value.bytes, decoded.Value.extension, document.FilePath, settings);
+            await PostInsertImage(link, "image");
+            SetStatus(link);
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Error("paste image", ex);
+            await ShowErrorAsync(Loc.Get("Error"), ex.Message);
+        }
+    }
+
+    private static readonly string[] ImageExtensions = { ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg" };
+
+    /// <summary>The editor's insertImage takes {alt, src, title} — a bare string inserts an empty image.</summary>
+    private Task PostInsertImage(string link, string alt) =>
+        Post("InsertImage", new { src = settings.EncodeImageLinks ? ImagePaths.EncodeLink(link) : link, alt, title = "" });
+
+    private async Task InsertImageDialogAsync()
+    {
+        string? path;
+        if (UseBuiltInPicker)
+        {
+            path = await ShowBuiltInPickerAsync(FilePickerDialog.PickerMode.OpenFile, null, ImageExtensions);
+        }
+        else
+        {
+            var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.PicturesLibrary };
+            foreach (var ext in ImageExtensions) picker.FileTypeFilter.Add(ext);
+            InitPicker(picker);
+            path = (await picker.PickSingleFileAsync())?.Path;
+        }
+        if (path != null) await InsertImageFileAsync(path);
     }
 
     // ---- menus ------------------------------------------------------------------------------------------------------
@@ -342,6 +514,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         file.Items.Add(Item("Save", async () => { if (document != null) await document.SaveAsync(); }, VirtualKey.S, ctrl: true));
         file.Items.Add(Item("SaveAs", async () => { if (document != null) await document.SaveAsAsync(); }, VirtualKey.S, ctrl: true, shift: true));
         file.Items.Add(Item("ExportHtml", async () => await ExportHtmlAsync()));
+        file.Items.Add(Item("PrintPdf", async () => await PrintAsync(), VirtualKey.P, ctrl: true));
         file.Items.Add(Item("ShareHedgeDoc", async () => await ShareToHedgeDocAsync()));
         file.Items.Add(new MenuFlyoutSeparator());
         file.Items.Add(Item("Settings", async () => await ShowSettingsAsync(), (VirtualKey)188, ctrl: true));
@@ -397,6 +570,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         var format = new MenuBarItem { Title = Loc.Get("Format") };
         foreach (var (key, type) in new[] { ("Strong", "strong"), ("Emphasis", "em"), ("Underline", "u"), ("InlineCode", "inline_code"), ("InlineMath", "inline_math"), ("Strikethrough", "del"), ("Highlight", "mark"), ("Hyperlink", "link"), ("Image", "image") })
             format.Items.Add(Item(key, async () => await Post("Format", type)));
+        format.Items.Add(Item("InsertImage", async () => await InsertImageDialogAsync()));
         format.Items.Add(new MenuFlyoutSeparator());
         format.Items.Add(Item("ClearFormat", async () => await Post("Format", "clear")));
         MainMenu.Items.Add(format);
@@ -492,6 +666,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             case ("o", true, true): await OpenFolderDialogAsync(); break;
             case ("n", true, false): await tabs.NewTabAsync(); break;
             case ("w", true, false): await tabs.CloseTabAsync(tabs.ActiveTab); break;
+            case ("p", true, false): await PrintAsync(); break;
             case ("f", true, false): ShowFind(true); break;
             case ("f", true, true): settings.SidePaneOpen = true; settings.SidePanePage = 2; ApplySidePane(); SearchBox.Focus(FocusState.Programmatic); break;
             case ("b", true, true): settings.SidePaneOpen = !settings.SidePaneOpen; break;
@@ -513,12 +688,20 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
 
     private async Task OpenFolderDialogAsync()
     {
-        var picker = new FolderPicker { SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
-        picker.FileTypeFilter.Add("*");
-        InitPicker(picker);
-        var folder = await picker.PickSingleFolderAsync();
-        if (folder?.Path == null) return;
-        SetWorkFolder(folder.Path, explicitChoice: true);
+        string? path;
+        if (UseBuiltInPicker)
+        {
+            path = await ShowBuiltInPickerAsync(FilePickerDialog.PickerMode.Folder);
+        }
+        else
+        {
+            var picker = new FolderPicker { SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
+            picker.FileTypeFilter.Add("*");
+            InitPicker(picker);
+            path = (await picker.PickSingleFolderAsync())?.Path;
+        }
+        if (path == null) return;
+        SetWorkFolder(path, explicitChoice: true);
         settings.SidePaneOpen = true;
         settings.SidePanePage = 0;
         ApplySidePane();
@@ -567,6 +750,149 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     }
 
     private async void OnOpenFolderClick(object sender, RoutedEventArgs e) => await OpenFolderDialogAsync();
+
+    private void OnFileTreeRightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        var item = (e.OriginalSource as FrameworkElement)?.DataContext as FolderItem;
+        var target = item ?? (workFolder != null ? folderRoot : null);
+        if (target == null) return;
+        var folder = target.IsFolder ? target.FullPath : Path.GetDirectoryName(target.FullPath)!;
+        var menu = new MenuFlyout();
+        void Add(string key, Action action) { var i = new MenuFlyoutItem { Text = Loc.Get(key) }; i.Click += (_, _) => action(); menu.Items.Add(i); }
+        if (!target.IsFolder) Add("Open", async () => { if (tabs != null) await tabs.OpenFileAsync(target.FullPath); });
+        Add("NewFileHere", async () => await CreateInFolderAsync(folder, file: true));
+        Add("NewFolderHere", async () => await CreateInFolderAsync(folder, file: false));
+        menu.Items.Add(new MenuFlyoutSeparator());
+        if (item != null)
+        {
+            Add("Rename", async () => await RenameAsync(item));
+            Add("Delete", async () => await DeleteAsync(item));
+            Add("CopyPath", () => { var p = new DataPackage(); p.SetText(item.FullPath); Clipboard.SetContent(p); });
+        }
+        Add("RevealInFileManager", () => OpenPath(folder));
+        Add("Refresh", () => RefreshTree());
+        menu.ShowAt((FrameworkElement)sender, e.GetPosition((UIElement)sender));
+        e.Handled = true;
+    }
+
+    private void RefreshTree()
+    {
+        if (workFolder == null) return;
+        SetWorkFolder(workFolder, folderIsExplicit);
+    }
+
+    private async Task<string?> AskNameAsync(string titleKey, string initial)
+    {
+        var box = new TextBox { Text = initial, SelectionStart = 0, SelectionLength = Path.GetFileNameWithoutExtension(initial).Length };
+        var dialog = new ContentDialog
+        {
+            Title = Loc.Get(titleKey),
+            Content = box,
+            PrimaryButtonText = Loc.Get("OK"),
+            CloseButtonText = Loc.Get("Cancel"),
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = XamlRoot,
+            RequestedTheme = DialogTheme,
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return null;
+        var name = box.Text.Trim();
+        return string.IsNullOrEmpty(name) ? null : name;
+    }
+
+    private async Task CreateInFolderAsync(string folder, bool file)
+    {
+        var name = await AskNameAsync(file ? "NewFileHere" : "NewFolderHere", file ? "untitled.md" : "folder");
+        if (name == null) return;
+        try
+        {
+            var path = Path.Combine(folder, name);
+            if (file)
+            {
+                if (!File.Exists(path)) await SafeFile.WriteAllTextAtomicAsync(path, "");
+                RefreshTree();
+                if (tabs != null) await tabs.OpenFileAsync(path);
+            }
+            else
+            {
+                Directory.CreateDirectory(path);
+                RefreshTree();
+            }
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync(Loc.Get("Error"), ex.Message);
+        }
+    }
+
+    private async Task RenameAsync(FolderItem item)
+    {
+        var name = await AskNameAsync("Rename", item.Name);
+        if (name == null || name == item.Name) return;
+        try
+        {
+            var target = Path.Combine(Path.GetDirectoryName(item.FullPath)!, name);
+            if (item.IsFolder) Directory.Move(item.FullPath, target);
+            else File.Move(item.FullPath, target);
+            // A renamed open document keeps its tab: point it at the new path.
+            if (!item.IsFolder && tabs?.FindByPath(item.FullPath) is { } tab) tab.FilePath = target;
+            RefreshTree();
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync(Loc.Get("Error"), ex.Message);
+        }
+    }
+
+    private async Task DeleteAsync(FolderItem item)
+    {
+        if (!await ConfirmAsync(Loc.Get("Delete"), Loc.Format("DeleteConfirm", item.Name), Loc.Get("Delete"), Loc.Get("Cancel"))) return;
+        try
+        {
+            if (item.IsFolder) Directory.Delete(item.FullPath, recursive: true);
+            else File.Delete(item.FullPath);
+            RefreshTree();
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync(Loc.Get("Error"), ex.Message);
+        }
+    }
+
+    // ---- side pane width ------------------------------------------------------------------------------------------
+
+    private bool resizingSidePane;
+    private double resizeStartX, resizeStartWidth;
+
+    private void OnSplitterPointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        resizingSidePane = true;
+        resizeStartX = e.GetCurrentPoint(this).Position.X;
+        resizeStartWidth = SidePaneColumn.Width.Value;
+        SidePaneSplitter.CapturePointer(e.Pointer);
+    }
+
+    private void OnSplitterPointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (!resizingSidePane) return;
+        var width = Math.Clamp(resizeStartWidth + (e.GetCurrentPoint(this).Position.X - resizeStartX), 160, Math.Max(200, ActualWidth - 320));
+        SidePaneColumn.Width = new GridLength(width);
+    }
+
+    private void OnSplitterPointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (!resizingSidePane) return;
+        resizingSidePane = false;
+        SidePaneSplitter.ReleasePointerCapture(e.Pointer);
+        settings.SidePaneWidth = SidePaneColumn.Width.Value;
+    }
+
+    private void OnSplitterPointerEntered(object sender, PointerRoutedEventArgs e) =>
+        ProtectedCursor = Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.SizeWestEast);
+
+    private void OnSplitterPointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        if (!resizingSidePane) ProtectedCursor = Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.Arrow);
+    }
 
     private async void OnOutlineItemClick(object sender, ItemClickEventArgs e)
     {
@@ -659,6 +985,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     {
         var open = settings.SidePaneOpen;
         SidePane.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        SidePaneSplitter.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
         SidePaneColumn.Width = open ? new GridLength(Math.Max(180, settings.SidePaneWidth)) : new GridLength(0);
         var page = settings.SidePanePage;
         FilesToggle.IsChecked = page == 0;
@@ -746,13 +1073,36 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private async Task ExportHtmlAsync()
     {
         if (document == null) return;
-        var picker = new FileSavePicker { SuggestedFileName = Path.GetFileNameWithoutExtension(document.FileName) + ".html" };
-        picker.FileTypeChoices.Add("HTML", new List<string> { ".html" });
-        InitPicker(picker);
-        var file = await picker.PickSaveFileAsync();
-        if (file?.Path == null) return;
-        await Post("Export", new { type = "html", context = new { filePath = file.Path }, basePath = document.BasePath, title = Path.GetFileNameWithoutExtension(document.FileName), options = new { } });
+        var suggested = Path.GetFileNameWithoutExtension(document.FileName) + ".html";
+        string? path;
+        if (UseBuiltInPicker)
+        {
+            path = await ShowBuiltInPickerAsync(FilePickerDialog.PickerMode.SaveFile, suggested, new[] { ".html", ".htm" });
+        }
+        else
+        {
+            var picker = new FileSavePicker { SuggestedFileName = suggested };
+            picker.FileTypeChoices.Add("HTML", new List<string> { ".html" });
+            InitPicker(picker);
+            path = (await picker.PickSaveFileAsync())?.Path;
+        }
+        if (path == null) return;
+        await Post("Export", new { type = "html", context = new { filePath = path }, basePath = document.BasePath, title = Path.GetFileNameWithoutExtension(document.FileName), options = new { } });
     }
+
+    /// <summary>
+    /// Renders the document to a temporary HTML file and opens it in the default browser, where the system print
+    /// dialog prints it or saves it as PDF (WebKitGTK's print API is not exposed through Uno).
+    /// </summary>
+    private async Task PrintAsync()
+    {
+        if (document == null) return;
+        var path = Path.Combine(Path.GetTempPath(), $"typedown-print-{Guid.NewGuid():N}.html");
+        printAfterExport = path;
+        await Post("Export", new { type = "html", context = new { filePath = path, print = true }, basePath = document.BasePath, title = Path.GetFileNameWithoutExtension(document.FileName), options = new { } });
+    }
+
+    private string? printAfterExport;
 
     private async Task ShareToHedgeDocAsync()
     {
@@ -822,16 +1172,18 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         StatusText.Text = document?.FilePath ?? Loc.Get("Untitled");
     }
 
-    private static void OpenContainingFolder(string path)
+    private static void OpenContainingFolder(string path) => OpenPath(Path.GetDirectoryName(path));
+
+    private static void OpenPath(string? path)
     {
+        if (path == null) return;
         try
         {
-            var folder = Path.GetDirectoryName(path);
-            if (folder != null) System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(folder) { UseShellExecute = true });
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
         }
         catch (Exception ex)
         {
-            Services.Log.Error("open folder failed", ex);
+            Services.Log.Error($"open {path} failed", ex);
         }
     }
 
@@ -851,8 +1203,27 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
 #endif
     }
 
+    /// <summary>
+    /// Linux gets the app's own chooser: the platform pickers there go through the XDG desktop portal, which is
+    /// absent on many desktops, and then the dialog simply never appears. Windows and macOS keep the native one.
+    /// </summary>
+    private static bool UseBuiltInPicker => OperatingSystem.IsLinux();
+
+    private string PickerStartDirectory => workFolder
+        ?? (document?.FilePath != null ? Path.GetDirectoryName(document.FilePath) : null)
+        ?? settings.LastFolder
+        ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+    private async Task<string?> ShowBuiltInPickerAsync(FilePickerDialog.PickerMode mode, string? suggestedName = null, IEnumerable<string>? extensions = null)
+    {
+        var dialog = new FilePickerDialog(mode, PickerStartDirectory, suggestedName, extensions) { XamlRoot = XamlRoot, RequestedTheme = DialogTheme };
+        await dialog.ShowAsync();
+        return dialog.SelectedPath;
+    }
+
     public async Task<string?> PickOpenFileAsync()
     {
+        if (UseBuiltInPicker) return await ShowBuiltInPickerAsync(FilePickerDialog.PickerMode.OpenFile, null, FolderItem.MarkdownExtensions);
         var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
         foreach (var ext in FolderItem.MarkdownExtensions) picker.FileTypeFilter.Add(ext);
         InitPicker(picker);
@@ -862,6 +1233,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
 
     public async Task<string?> PickSaveFileAsync(string? suggestedName)
     {
+        if (UseBuiltInPicker) return await ShowBuiltInPickerAsync(FilePickerDialog.PickerMode.SaveFile, suggestedName ?? "Untitled.md");
         var picker = new FileSavePicker { SuggestedStartLocation = PickerLocationId.DocumentsLibrary, SuggestedFileName = suggestedName ?? "Untitled.md" };
         picker.FileTypeChoices.Add("Markdown", new List<string> { ".md" });
         picker.FileTypeChoices.Add("Text", new List<string> { ".txt" });

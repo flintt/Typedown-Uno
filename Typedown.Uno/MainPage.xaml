@@ -70,7 +70,7 @@
         <TextBlock x:Name="SidePaneTitle" Grid.Row="1" Margin="12,0,12,4" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
         <Grid Grid.Row="2">
           <TreeView x:Name="FileTree" ItemTemplate="{StaticResource FolderItemTemplate}" SelectionMode="Single" CanDragItems="False" CanReorderItems="False"
-                    ItemInvoked="OnFileTreeItemInvoked" DoubleTapped="OnFileTreeDoubleTapped"/>
+                    ItemInvoked="OnFileTreeItemInvoked" DoubleTapped="OnFileTreeDoubleTapped" RightTapped="OnFileTreeRightTapped"/>
           <ListView x:Name="OutlineList" ItemTemplate="{StaticResource OutlineItemTemplate}" IsItemClickEnabled="True" ItemClick="OnOutlineItemClick" SelectionMode="None" Visibility="Collapsed" Padding="8,0"/>
           <Grid x:Name="SearchPanel" Visibility="Collapsed">
             <Grid.RowDefinitions>
@@ -88,6 +88,11 @@
           <Button x:Name="OpenFolderButton" HorizontalAlignment="Stretch" Click="OnOpenFolderClick"/>
         </StackPanel>
       </Grid>
+
+      <!-- Drag handle for the side pane width (WinUI has no GridSplitter). -->
+      <Border x:Name="SidePaneSplitter" Grid.Column="0" Width="6" HorizontalAlignment="Right" Background="Transparent" Visibility="Collapsed"
+              PointerPressed="OnSplitterPointerPressed" PointerMoved="OnSplitterPointerMoved" PointerReleased="OnSplitterPointerReleased"
+              PointerEntered="OnSplitterPointerEntered" PointerExited="OnSplitterPointerExited"/>
 
       <!-- The Typedown editor (React/Muya) in a WebView2; the host bridge lives in Assets/Editor/uno-bridge.js -->
       <WebView2 x:Name="EditorView" Grid.Column="1"/>

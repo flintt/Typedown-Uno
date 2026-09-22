@@ -1,0 +1,36 @@
+<ContentDialog x:Class="Typedown.Uno.Views.FilePickerDialog"
+               xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+               xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+               xmlns:local="using:Typedown.Uno.Views"
+               DefaultButton="Primary">
+  <Grid Width="560" Height="460" RowSpacing="8">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <Grid ColumnSpacing="6">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="Auto"/>
+        <ColumnDefinition Width="*"/>
+      </Grid.ColumnDefinitions>
+      <Button x:Name="UpButton" Click="OnUpClick" ToolTipService.ToolTip="..">
+        <FontIcon Glyph="&#xE74A;" FontSize="12"/>
+      </Button>
+      <TextBox x:Name="PathBox" Grid.Column="1" KeyDown="OnPathKeyDown"/>
+    </Grid>
+
+    <ListView x:Name="Entries" Grid.Row="1" SelectionMode="Single" IsItemClickEnabled="True"
+              ItemClick="OnItemClick" DoubleTapped="OnItemDoubleTapped" SelectionChanged="OnSelectionChanged"/>
+
+    <Grid Grid.Row="2" ColumnSpacing="6">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="Auto"/>
+        <ColumnDefinition Width="*"/>
+      </Grid.ColumnDefinitions>
+      <TextBlock x:Name="NameLabel" VerticalAlignment="Center"/>
+      <TextBox x:Name="NameBox" Grid.Column="1" KeyDown="OnNameKeyDown"/>
+    </Grid>
+  </Grid>
+</ContentDialog>
