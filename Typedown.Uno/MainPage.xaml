@@ -93,7 +93,7 @@
       <WebView2 x:Name="EditorView" Grid.Column="1"/>
     </Grid>
 
-    <Grid Grid.Row="4" Padding="8,3" ColumnSpacing="12" Background="{ThemeResource LayerFillColorDefaultBrush}">
+    <Grid x:Name="StatusBar" Grid.Row="4" Padding="8,3" ColumnSpacing="12" Background="{ThemeResource LayerFillColorDefaultBrush}">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="*"/>
         <ColumnDefinition Width="Auto"/>

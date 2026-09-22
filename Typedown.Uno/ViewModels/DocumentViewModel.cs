@@ -337,9 +337,14 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
             try { text = await File.ReadAllTextAsync(FilePath); } catch { return; }
             var diskHash = SafeFile.Hash(text);
             if (diskHash == DiskHash || diskHash == FileHash) return; // nothing really changed
-            if (Saved)
+            if (Saved || settings.AutoReload)
             {
                 await ApplyDiskTextAsync(text);
+                return;
+            }
+            if (!settings.AskBeforeReload)
+            {
+                DiskHash = diskHash; // keep the unsaved buffer and stop asking about this revision
                 return;
             }
             var reload = await ui.ConfirmAsync(Loc.Get("FileChanged"), Loc.Format("ReloadPrompt", FileName), Loc.Get("Reload"), Loc.Get("KeepMine"));

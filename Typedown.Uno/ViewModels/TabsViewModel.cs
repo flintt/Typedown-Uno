@@ -60,7 +60,8 @@ public sealed class TabsViewModel : INotifyPropertyChanged
             if (!preview) existing.IsPreview = false;
             return true;
         }
-        var reuse = document.IsBlank || (preview && document.Saved && ActiveTab.IsPreview);
+        // "Open files in a new tab" off: an open replaces the current document whenever it has nothing to lose.
+        var reuse = document.IsBlank || (preview && document.Saved && ActiveTab.IsPreview) || (!settings.OpenFilesInNewTab && document.Saved);
         DocumentTab? started = null;
         if (!reuse) started = BeginNewTab();
         var ok = await document.LoadAsync(path);

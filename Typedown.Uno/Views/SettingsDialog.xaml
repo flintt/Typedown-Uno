@@ -3,36 +3,8 @@
                xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                xmlns:local="using:Typedown.Uno.Views"
                DefaultButton="Close">
-  <ScrollViewer MaxHeight="520" MinWidth="420">
-    <StackPanel Spacing="10" Padding="0,0,12,0">
-      <TextBlock x:Name="GeneralHeader" FontWeight="SemiBold"/>
-      <ComboBox x:Name="LanguageBox" MinWidth="220" SelectionChanged="OnLanguageChanged"/>
-      <ComboBox x:Name="ThemeBox" MinWidth="220" SelectionChanged="OnThemeChanged"/>
-      <ToggleSwitch x:Name="AutoSaveSwitch" Toggled="OnToggled"/>
-      <ToggleSwitch x:Name="RememberPositionSwitch" Toggled="OnToggled"/>
-      <ToggleSwitch x:Name="RestoreSessionSwitch" Toggled="OnToggled"/>
-      <ToggleSwitch x:Name="AlwaysShowTabBarSwitch" Toggled="OnToggled"/>
-
-      <TextBlock x:Name="EditorHeader" FontWeight="SemiBold" Margin="0,8,0,0"/>
-      <NumberBox x:Name="FontSizeBox" Minimum="8" Maximum="48" SpinButtonPlacementMode="Inline" ValueChanged="OnNumberChanged"/>
-      <NumberBox x:Name="LineHeightBox" Minimum="1" Maximum="3" SmallChange="0.1" SpinButtonPlacementMode="Inline" ValueChanged="OnNumberChanged"/>
-      <TextBox x:Name="EditorWidthBox" TextChanged="OnTextChanged"/>
-      <NumberBox x:Name="TabSizeBox" Minimum="1" Maximum="8" SpinButtonPlacementMode="Inline" ValueChanged="OnNumberChanged"/>
-      <ComboBox x:Name="ListIndentationBox" MinWidth="220" SelectionChanged="OnListIndentationChanged"/>
-      <ToggleSwitch x:Name="TableAlignSwitch" Toggled="OnToggled"/>
-      <ToggleSwitch x:Name="LooseListSwitch" Toggled="OnToggled"/>
-      <ToggleSwitch x:Name="ParagraphMarkerSwitch" Toggled="OnToggled"/>
-      <ToggleSwitch x:Name="SpellcheckSwitch" Toggled="OnToggled"/>
-
-      <TextBlock x:Name="HedgeDocHeader" FontWeight="SemiBold" Margin="0,8,0,0"/>
-      <TextBox x:Name="HedgeDocServerBox" PlaceholderText="https://md.example.com" TextChanged="OnTextChanged"/>
-      <TextBox x:Name="HedgeDocEmailBox" TextChanged="OnTextChanged"/>
-      <PasswordBox x:Name="HedgeDocPasswordBox" PasswordChanged="OnPasswordChanged"/>
-      <ToggleSwitch x:Name="PublishReadOnlySwitch" Toggled="OnToggled"/>
-      <StackPanel Orientation="Horizontal" Spacing="8">
-        <Button x:Name="TestButton" Click="OnTestClick" Content="Test"/>
-        <TextBlock x:Name="TestStatus" VerticalAlignment="Center" Opacity="0.7" TextWrapping="Wrap" MaxWidth="300"/>
-      </StackPanel>
-    </StackPanel>
+  <!-- The rows are built in code so every label goes through the localization table. -->
+  <ScrollViewer MaxHeight="560" MinWidth="460">
+    <StackPanel x:Name="Container" Spacing="2" Padding="0,0,14,0"/>
   </ScrollViewer>
 </ContentDialog>

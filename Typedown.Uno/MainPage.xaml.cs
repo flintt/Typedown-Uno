@@ -63,17 +63,33 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         transport.MessageReceived += OnEditorMessage;
 
         // Documents are staged before the page loads: the editor's first GetSettings carries the active one.
+        string? sessionFolder = null;
         if (startupFile != null)
         {
             await tabs.OpenFileAsync(startupFile);
         }
-        else if (settings.RestoreSession)
+        else
         {
-            var folder = await tabs.RestoreSessionAsync();
-            if (folder != null && Directory.Exists(folder)) SetWorkFolder(folder);
+            switch (settings.FileStartupAction)
+            {
+                case FileStartupAction.RestoreSession:
+                    sessionFolder = await tabs.RestoreSessionAsync();
+                    break;
+                case FileStartupAction.OpenLast:
+                    var last = settings.RecentFiles.FirstOrDefault(File.Exists);
+                    if (last != null) await tabs.OpenFileAsync(last);
+                    break;
+            }
         }
-        if (workFolder == null && settings.LastFolder != null && Directory.Exists(settings.LastFolder)) SetWorkFolder(settings.LastFolder);
+        var startFolder = settings.FolderStartupAction switch
+        {
+            FolderStartupAction.OpenFixed => settings.StartupFolder,
+            FolderStartupAction.OpenLast => sessionFolder ?? settings.LastFolder,
+            _ => null,
+        };
+        if (startFolder != null && Directory.Exists(startFolder)) SetWorkFolder(startFolder);
         if (workFolder == null && document.FilePath != null) SetWorkFolder(Path.GetDirectoryName(document.FilePath)!);
+        ApplyStatusBar();
         UpdateTitle();
         UpdateTabBar();
         HookWindowClosing();
@@ -167,6 +183,29 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     }
 
     private bool editorPageLoaded;
+    private string? lastTocJson;
+    private string? pendingWordCount;
+    private string? shownWordCount;
+    private DispatcherTimer? wordCountTimer;
+
+    private void StartWordCountTimer()
+    {
+        if (wordCountTimer == null)
+        {
+            wordCountTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
+            wordCountTimer.Tick += (_, _) =>
+            {
+                if (pendingWordCount == shownWordCount)
+                {
+                    wordCountTimer!.Stop();
+                    return;
+                }
+                shownWordCount = pendingWordCount;
+                WordCountText.Text = shownWordCount ?? "";
+            };
+        }
+        if (!wordCountTimer.IsEnabled) wordCountTimer.Start();
+    }
 
     // ---- editor bridge ------------------------------------------------------------------------------------------
 
@@ -221,6 +260,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             {
                 await SafeFile.WriteAllTextAtomicAsync(path, html);
                 SetStatus(Loc.Format("Exported", path));
+                if (settings.OpenFolderAfterExport) OpenContainingFolder(path);
             }
             return (object?)true;
         });
@@ -237,13 +277,35 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                 DispatcherQueue.TryEnqueue(UpdateTitle);
                 break;
             case "StateChange":
-                var words = args?["state"]?["wordCount"]?["word"];
-                var toc = args?["state"]?["toc"]?.DeepClone();
-                DispatcherQueue.TryEnqueue(() =>
+                // Fires on every keystroke: only touch the UI for what is actually visible, and never rebuild the
+                // outline for an unchanged table of contents (rebuilding a ListView per keystroke is expensive).
+                var state = args?["state"];
+                if (settings.StatusBarOpen)
                 {
-                    if (words != null) WordCountText.Text = Loc.Format("Words", words);
-                    OutlineList.ItemsSource = OutlineItem.FromToc(toc);
-                });
+                    var count = state?["wordCount"]?[settings.WordCountMethod switch
+                    {
+                        WordCountMethod.Characters => "character",
+                        WordCountMethod.Paragraphs => "paragraph",
+                        _ => "word",
+                    }];
+                    // Writing the status bar on every keystroke repaints the window; the count is only informative,
+                    // so it is coalesced (a full repaint per character is the single most expensive thing here).
+                    if (count != null)
+                    {
+                        pendingWordCount = Loc.Format("Words", count);
+                        DispatcherQueue.TryEnqueue(StartWordCountTimer);
+                    }
+                }
+                if (settings.SidePaneOpen && settings.SidePanePage == 1)
+                {
+                    var tocJson = state?["toc"]?.ToJsonString();
+                    if (tocJson != null && tocJson != lastTocJson)
+                    {
+                        lastTocJson = tocJson;
+                        var items = OutlineItem.FromToc(state?["toc"]);
+                        DispatcherQueue.TryEnqueue(() => OutlineList.ItemsSource = items);
+                    }
+                }
                 break;
             case "OpenURI":
                 var uri = args?["uri"]?.GetValue<string>();
@@ -262,8 +324,12 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
 
     private MenuFlyoutSubItem? recentMenu;
 
+    private readonly List<System.ComponentModel.PropertyChangedEventHandler> menuToggleHandlers = new();
+
     private void BuildMenus()
     {
+        foreach (var handler in menuToggleHandlers) settings.PropertyChanged -= handler;
+        menuToggleHandlers.Clear();
         MainMenu.Items.Clear();
         var file = new MenuBarItem { Title = Loc.Get("File") };
         file.Items.Add(Item("New", async () => { if (tabs != null) await tabs.NewTabAsync(); }, VirtualKey.N, ctrl: true));
@@ -372,7 +438,9 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         item.Click += (_, _) => set(item.IsChecked);
         void Flip() { set(!get()); item.IsChecked = get(); }
         if (accelerator != null) AddAccelerator(item, accelerator.Value, ctrl, shift, Flip);
-        settings.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(() => item.IsChecked = get());
+        void OnChanged(object? _, System.ComponentModel.PropertyChangedEventArgs __) => DispatcherQueue.TryEnqueue(() => item.IsChecked = get());
+        settings.PropertyChanged += OnChanged;
+        menuToggleHandlers.Add(OnChanged); // dropped when the menus are rebuilt (see BuildMenus)
         return item;
     }
 
@@ -566,15 +634,26 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
 
     // ---- find (the bar itself lives in the page: uno-bridge.js) ------------------------------------------------
 
-    private void ShowFind(bool show, string? text = null) => _ = show ? Post("ShowFind", new { value = text }) : Post("HideFind", null);
+    private void ShowFind(bool show, string? text = null) => _ = show ? Post("ShowFind", new { value = text, opt = SearchOptions() }) : Post("HideFind", null);
+
+    /// <summary>Search options the in-page find bar passes to the editor (see Settings → Find).</summary>
+    private object SearchOptions() => new
+    {
+        searchIsCaseSensitive = settings.FindCaseSensitive,
+        searchIsWholeWord = settings.FindWholeWord,
+        searchIsRegexp = settings.FindRegex,
+    };
 
     // ---- side pane, theme, settings -----------------------------------------------------------------------------------
 
     private void OnSidePageClick(object sender, RoutedEventArgs e)
     {
         settings.SidePanePage = int.Parse((string)((ToggleButton)sender).Tag);
+        lastTocJson = null; // the outline is only tracked while it is visible
         ApplySidePane();
     }
+
+    private void ApplyStatusBar() => StatusBar.Visibility = settings.StatusBarOpen ? Visibility.Visible : Visibility.Collapsed;
 
     private void ApplySidePane()
     {
@@ -630,6 +709,8 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                 case nameof(AppSettings.Theme): ApplyTheme(post: true); break;
                 case nameof(AppSettings.SidePaneOpen) or nameof(AppSettings.SidePanePage) or nameof(AppSettings.SidePaneWidth): ApplySidePane(); break;
                 case nameof(AppSettings.AlwaysShowTabBar): UpdateTabBar(); break;
+                case nameof(AppSettings.StatusBarOpen): ApplyStatusBar(); break;
+                case nameof(AppSettings.WordCountMethod): lastTocJson = null; break;
                 case nameof(AppSettings.RecentFiles): FillRecent(); break;
                 case nameof(AppSettings.Language): Loc.Apply(settings.Language); ApplyStrings(); BuildMenus(); UpdateTitle(); break;
             }
@@ -739,6 +820,19 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         var title = document?.Title ?? "Typedown";
         if (App.MainWindow != null) App.MainWindow.Title = title;
         StatusText.Text = document?.FilePath ?? Loc.Get("Untitled");
+    }
+
+    private static void OpenContainingFolder(string path)
+    {
+        try
+        {
+            var folder = Path.GetDirectoryName(path);
+            if (folder != null) System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(folder) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Error("open folder failed", ex);
+        }
     }
 
     private void SetStatus(string text)

@@ -49,7 +49,8 @@
     // so the find UI lives in the page and drives the editor's own Search/Find handlers directly.
     var findBar = null, findInput = null, findCount = null;
     // `selection` must be truthy or the editor ignores the search; an empty object means "from the start".
-    function searchOptions() { return { searchIsCaseSensitive: false, searchIsWholeWord: false, searchIsRegexp: false, selection: {} }; }
+    var findOptions = { searchIsCaseSensitive: false, searchIsWholeWord: false, searchIsRegexp: false };
+    function searchOptions() { return Object.assign({ selection: {} }, findOptions); }
     function runSearch() {
         local('Search', { value: findInput.value, opt: searchOptions() });
         setTimeout(function () {
@@ -112,7 +113,7 @@
     window.__unoDeliver = function (data) {
         try {
             var msg = JSON.parse(data);
-            if (msg && msg.name === 'ShowFind') { showFind(msg.args && msg.args.value); return; }
+            if (msg && msg.name === 'ShowFind') { if (msg.args && msg.args.opt) findOptions = msg.args.opt; showFind(msg.args && msg.args.value); return; }
             if (msg && msg.name === 'HideFind') { hideFind(); return; }
         } catch (e) { }
         deliver(data);

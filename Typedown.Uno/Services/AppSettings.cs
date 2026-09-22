@@ -7,6 +7,14 @@ namespace Typedown.Uno.Services;
 
 public enum AppTheme { System, Light, Dark, Black }
 
+/// <summary>What to open at startup when no file was passed on the command line.</summary>
+public enum FileStartupAction { NewFile, OpenLast, RestoreSession }
+
+/// <summary>Which folder the side pane starts on.</summary>
+public enum FolderStartupAction { None, OpenLast, OpenFixed }
+
+public enum WordCountMethod { Words, Characters, Paragraphs }
+
 /// <summary>
 /// User settings, persisted as JSON under the app data folder. Changing a property raises PropertyChanged and
 /// schedules a save; the editor-facing subset is pushed to the WebView through "SettingsChanged".
@@ -108,8 +116,44 @@ public sealed class AppSettings : INotifyPropertyChanged
     private bool rememberPosition = true;
     public bool RememberPosition { get => rememberPosition; set => Set(ref rememberPosition, value); }
 
-    private bool restoreSession = true;
-    public bool RestoreSession { get => restoreSession; set => Set(ref restoreSession, value); }
+    private FileStartupAction fileStartupAction = FileStartupAction.RestoreSession;
+    public FileStartupAction FileStartupAction { get => fileStartupAction; set => Set(ref fileStartupAction, value); }
+
+    private FolderStartupAction folderStartupAction = FolderStartupAction.OpenLast;
+    public FolderStartupAction FolderStartupAction { get => folderStartupAction; set => Set(ref folderStartupAction, value); }
+
+    private string? startupFolder;
+    /// <summary>Used when <see cref="FolderStartupAction"/> is <see cref="FolderStartupAction.OpenFixed"/>.</summary>
+    public string? StartupFolder { get => startupFolder; set => Set(ref startupFolder, value); }
+
+    private bool openFilesInNewTab = true;
+    public bool OpenFilesInNewTab { get => openFilesInNewTab; set => Set(ref openFilesInNewTab, value); }
+
+    private bool autoReload;
+    /// <summary>Reload a document changed on disk even when it has unsaved changes (no prompt).</summary>
+    public bool AutoReload { get => autoReload; set => Set(ref autoReload, value); }
+
+    private bool askBeforeReload = true;
+    public bool AskBeforeReload { get => askBeforeReload; set => Set(ref askBeforeReload, value); }
+
+    private bool statusBarOpen = true;
+    public bool StatusBarOpen { get => statusBarOpen; set => Set(ref statusBarOpen, value); }
+
+    private WordCountMethod wordCountMethod = WordCountMethod.Words;
+    public WordCountMethod WordCountMethod { get => wordCountMethod; set => Set(ref wordCountMethod, value); }
+
+    private bool openFolderAfterExport = true;
+    public bool OpenFolderAfterExport { get => openFolderAfterExport; set => Set(ref openFolderAfterExport, value); }
+
+    // find bar options (sent to the editor with every search)
+    private bool findCaseSensitive;
+    public bool FindCaseSensitive { get => findCaseSensitive; set => Set(ref findCaseSensitive, value); }
+
+    private bool findWholeWord;
+    public bool FindWholeWord { get => findWholeWord; set => Set(ref findWholeWord, value); }
+
+    private bool findRegex;
+    public bool FindRegex { get => findRegex; set => Set(ref findRegex, value); }
 
     private string? lastFolder;
     public string? LastFolder { get => lastFolder; set => Set(ref lastFolder, value); }
