@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Extensions.Logging;
 using Uno.Resizetizer;
 
@@ -34,37 +36,47 @@ public partial class App : Application
             Environment.SetEnvironmentVariable("GDK_BACKEND", "x11"); // the GTK web view needs X11 even on Wayland
     }
 
+    /// <summary>The first window; kept for the platform pickers that need a window handle on Windows.</summary>
     public static Window? MainWindow { get; private set; }
+
+    private static readonly List<Window> windows = new();
+
+    public static IReadOnlyList<Window> Windows => windows;
+
+    /// <summary>Looks up the window a page belongs to (a page only knows its XamlRoot).</summary>
+    public static Window? WindowFor(XamlRoot? root) =>
+        root == null ? null : windows.FirstOrDefault(w => ReferenceEquals(w.Content?.XamlRoot, root));
+
+    /// <summary>
+    /// Opens a window with its own editor, tabs and document. The title starts as a unique marker so the page
+    /// can find its X11 window among the others (Uno exposes no native handle).
+    /// </summary>
+    public static Window CreateWindow(string? initialFile = null, bool restoreSession = false)
+    {
+        var window = new Window { Title = $"Typedown-{Guid.NewGuid():N}" };
+        var frame = new Frame();
+        window.Content = frame;
+        frame.NavigationFailed += OnNavigationFailedStatic;
+        frame.Navigate(typeof(MainPage), new MainPage.StartupOptions(initialFile, restoreSession, window.Title));
+        windows.Add(window);
+        window.Closed += (_, _) =>
+        {
+            windows.Remove(window);
+            if (windows.Count == 0) Current.Exit();
+        };
+        window.SetWindowIcon();
+        window.Activate();
+        MainWindow ??= window;
+        return window;
+    }
+
+    private static void OnNavigationFailedStatic(object sender, NavigationFailedEventArgs e) =>
+        throw new InvalidOperationException($"Failed to load {e.SourcePageType.FullName}: {e.Exception}");
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        MainWindow = new Window();
-
-
-        // Do not repeat app initialization when the Window already has content,
-        // just ensure that the window is active
-        if (MainWindow.Content is not Frame rootFrame)
-        {
-            // Create a Frame to act as the navigation context and navigate to the first page
-            rootFrame = new Frame();
-
-            // Place the frame in the current Window
-            MainWindow.Content = rootFrame;
-
-            rootFrame.NavigationFailed += OnNavigationFailed;
-        }
-
-        if (rootFrame.Content == null)
-        {
-            // When the navigation stack isn't restored navigate to the first page,
-            // configuring the new page by passing required information as a navigation
-            // parameter
-            rootFrame.Navigate(typeof(MainPage), args.Arguments);
-        }
-
-        MainWindow.SetWindowIcon();
-        // Ensure the current window is active
-        MainWindow.Activate();
+        var file = Environment.GetCommandLineArgs().Skip(1).FirstOrDefault(a => !a.StartsWith('-') && System.IO.File.Exists(a));
+        CreateWindow(file, restoreSession: file == null);
     }
 
     /// <summary>

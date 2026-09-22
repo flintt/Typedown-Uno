@@ -5,7 +5,7 @@
 ## 功能
 
 - 所见即所得 Markdown 编辑（表格、公式、代码块、图表、任务列表、脚注……），源代码模式、专注/打字机/阅读模式
-- 多标签：文件树单击预览、双击固定；Ctrl+Tab 切换；关闭时逐个询问保存；启动时恢复上次会话
+- 多窗口 + 多标签：Ctrl+Shift+N 开新窗口（各自独立的文档/标签/侧栏），文件树可「在新窗口中打开」；文件树单击预览、双击固定；Ctrl+Tab 切换；关闭时逐个询问保存；启动时恢复上次会话
 - 侧边栏：文件树、大纲（点击跳转）、文件夹全文搜索（含文件名）
 - 文件：打开/保存/另存为（系统对话框）、原子写入、外部修改检测、自动保存、最近文件、记住每个文件的光标和滚动位置
 - 查找：Ctrl+F 页内查找（高亮、上一个/下一个）
@@ -43,7 +43,7 @@ Wayland 桌面下 GTK 网页视图需要 X11，启动脚本已经设好 `GDK_BAC
 ## 快捷键
 
 全部快捷键都可以在 设置 → 快捷键 里改（点输入框按新组合，Esc 清除，↺ 恢复默认）。默认值：
-Ctrl+N 新建标签 · Ctrl+P 打印/导出 PDF · Ctrl+O 打开 · Ctrl+Shift+O 打开文件夹 · Ctrl+S 保存 · Ctrl+Shift+S 另存为 · Ctrl+W 关闭标签 · Ctrl+Tab / Ctrl+Shift+Tab 切换标签 · Ctrl+F 查找 · Ctrl+Shift+F 文件夹搜索 · Ctrl+Shift+B 侧边栏 · Ctrl+Shift+R 阅读模式 · Ctrl+/ 源代码模式 · Ctrl+, 设置。编辑快捷键（加粗、斜体、撤销……）由编辑器本身处理。
+Ctrl+N 新建标签 · Ctrl+Shift+N 新建窗口 · Ctrl+P 打印/导出 PDF · Ctrl+O 打开 · Ctrl+Shift+O 打开文件夹 · Ctrl+S 保存 · Ctrl+Shift+S 另存为 · Ctrl+W 关闭标签 · Ctrl+Tab / Ctrl+Shift+Tab 切换标签 · Ctrl+F 查找 · Ctrl+Shift+F 文件夹搜索 · Ctrl+Shift+B 侧边栏 · Ctrl+Shift+R 阅读模式 · Ctrl+/ 源代码模式 · Ctrl+, 设置。编辑快捷键（加粗、斜体、撤销……）由编辑器本身处理。
 
 ## 开发
 
@@ -62,5 +62,5 @@ dotnet publish Typedown.Uno/Typedown.Uno.csproj -f net9.0-desktop -c Release -r 
 - **文件对话框用的是程序内置的选择器**（Linux）。Uno 的系统选择器依赖 XDG desktop portal，很多桌面上装不全，结果是对话框根本不出现，所以这里一律用自绘的选择器；Windows / macOS 仍用系统原生对话框。
 - PDF 走"在浏览器中打印"，没有直接生成 PDF（WebKitGTK 的打印 API 没有通过 Uno 暴露出来）。
 - 图床上传未实现（按需求暂不做）。
-- 单窗口；多个文档以标签形式打开。
+- 每个窗口有独立的文档、标签和侧栏；会话恢复只作用于启动时的第一个窗口，退出时保存最后关闭窗口的标签列表。
 - Linux 上编辑器是一个原生 WebKit 窗口，因此无法与 XAML 控件重叠动画；对话框会覆盖在它上面。

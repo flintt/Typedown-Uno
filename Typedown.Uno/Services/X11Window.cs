@@ -30,18 +30,66 @@ public static class X11Window
     [DllImport(LibX11)] private static extern int XFlush(IntPtr display);
 
     private static IntPtr display;
-    private static IntPtr window;
 
-    /// <summary>Publishes the title as UTF-8 on both WM_NAME and _NET_WM_NAME.</summary>
-    public static void SetTitle(string title)
+    private static bool EnsureDisplay()
     {
-        if (!OperatingSystem.IsLinux()) return;
+        if (!OperatingSystem.IsLinux()) return false;
+        if (display == IntPtr.Zero) display = XOpenDisplay(IntPtr.Zero);
+        return display != IntPtr.Zero;
+    }
+
+    /// <summary>
+    /// The X11 id of the window whose title contains <paramref name="marker"/>. Windows are created with a unique
+    /// title precisely so each page can find its own among several (Uno exposes no native handle).
+    /// </summary>
+    public static IntPtr FindByTitle(string marker)
+    {
+        if (!EnsureDisplay() || string.IsNullOrEmpty(marker)) return IntPtr.Zero;
         try
         {
-            if (display == IntPtr.Zero) display = XOpenDisplay(IntPtr.Zero);
-            if (display == IntPtr.Zero) return;
-            if (window == IntPtr.Zero || !HasClass(window)) window = FindAppWindow();
-            if (window == IntPtr.Zero) return;
+            if (XQueryTree(display, XRootWindow(display, XDefaultScreen(display)), out _, out _, out var children, out var count) == 0 || children == IntPtr.Zero)
+                return IntPtr.Zero;
+            try
+            {
+                for (var i = 0; i < count; i++)
+                {
+                    var child = Marshal.ReadIntPtr(children, i * IntPtr.Size);
+                    if (HasClass(child) && ReadText(child, "WM_NAME").Contains(marker, StringComparison.Ordinal)) return child;
+                }
+            }
+            finally
+            {
+                XFree(children);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("find window", ex);
+        }
+        return IntPtr.Zero;
+    }
+
+    private static string ReadText(IntPtr candidate, string property)
+    {
+        if (XGetWindowProperty(display, candidate, XInternAtom(display, property, false), IntPtr.Zero, (IntPtr)256, false, IntPtr.Zero,
+                out _, out _, out var items, out _, out var data) != 0 || data == IntPtr.Zero)
+            return "";
+        try
+        {
+            return Marshal.PtrToStringUTF8(data, (int)items) ?? "";
+        }
+        finally
+        {
+            XFree(data);
+        }
+    }
+
+    /// <summary>Publishes the title as UTF-8 on both WM_NAME and _NET_WM_NAME.</summary>
+    public static void SetTitle(IntPtr window, string title)
+    {
+        if (!EnsureDisplay() || window == IntPtr.Zero) return;
+        try
+        {
 
             var bytes = Encoding.UTF8.GetBytes(title);
             var utf8 = XInternAtom(display, "UTF8_STRING", false);
@@ -59,15 +107,11 @@ public static class X11Window
     /// Publishes the app icon at several sizes as <c>_NET_WM_ICON</c>. Uno only sets a single small size, which
     /// looks blurry in docks and task switchers.
     /// </summary>
-    public static void SetIcon(string pngPath)
+    public static void SetIcon(IntPtr window, string pngPath)
     {
-        if (!OperatingSystem.IsLinux() || !File.Exists(pngPath)) return;
+        if (!EnsureDisplay() || window == IntPtr.Zero || !File.Exists(pngPath)) return;
         try
         {
-            if (display == IntPtr.Zero) display = XOpenDisplay(IntPtr.Zero);
-            if (display == IntPtr.Zero) return;
-            if (window == IntPtr.Zero) window = FindAppWindow();
-            if (window == IntPtr.Zero) return;
 
             using var original = SkiaSharp.SKBitmap.Decode(pngPath);
             if (original == null) return;
@@ -105,26 +149,6 @@ public static class X11Window
         {
             Log.Error("set window icon", ex);
         }
-    }
-
-    /// <summary>Our toplevel window, found by the WM_CLASS the app sets (there is no public handle in Uno).</summary>
-    private static IntPtr FindAppWindow()
-    {
-        if (XQueryTree(display, XRootWindow(display, XDefaultScreen(display)), out _, out _, out var children, out var count) == 0 || children == IntPtr.Zero)
-            return IntPtr.Zero;
-        try
-        {
-            for (var i = 0; i < count; i++)
-            {
-                var child = Marshal.ReadIntPtr(children, i * IntPtr.Size);
-                if (HasClass(child)) return child;
-            }
-        }
-        finally
-        {
-            XFree(children);
-        }
-        return IntPtr.Zero;
     }
 
     /// <summary>WM_CLASS of the shell window (the app id from the project); the web view uses a different one.</summary>

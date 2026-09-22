@@ -65,6 +65,5 @@ xvfb-run -a dotnet run --project Typedown.Uno/Typedown.Uno.csproj -f net9.0-desk
 
 仍未做：
 - 图床上传（按用户要求暂不做）
-- 多窗口（目前单窗口 + 多标签）
 - Windows / macOS 上的实际运行验证（CI 能出包，但没有真机点过）
 - 键盘焦点：在网页编辑器内按快捷键由 `uno-bridge.js` 转发（Ctrl+S/O/N/W/P/Tab/,//，Ctrl+Shift+S/O/F/B/R），页内查找栏也在网页里

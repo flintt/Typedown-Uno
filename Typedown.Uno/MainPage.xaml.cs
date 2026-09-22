@@ -17,6 +17,13 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
 {
     private const string EditorHost = "typedown.editor";
 
+    /// <summary>What a freshly created window should open.</summary>
+    public sealed record StartupOptions(string? File, bool RestoreSession, string Marker);
+
+    private StartupOptions options = new(null, false, "");
+    private Window? window;
+    private IntPtr nativeWindow;
+
     private readonly AppSettings settings = AppSettings.Current;
     private EditorTransport? transport;
     private DocumentViewModel? document;
@@ -39,13 +46,17 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
-        startupFile = Environment.GetCommandLineArgs().Skip(1).FirstOrDefault(a => !a.StartsWith('-') && File.Exists(a));
+        if (e.Parameter is StartupOptions startup) options = startup;
+        startupFile = options.File;
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         // The document model is built first and never depends on the web view: if the editor fails to come up
         // (missing WebKitGTK, a stalled native initialization) the shell must still be usable and say why.
+        window = App.WindowFor(XamlRoot) ?? App.MainWindow;
+        // This window's X11 id, found through the unique title it was created with (Uno exposes no handle).
+        nativeWindow = Services.X11Window.FindByTitle(options.Marker);
         ApplyStrings();
         BuildMenus();
         ApplyTheme(post: false);
@@ -71,7 +82,8 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         }
         else
         {
-            switch (settings.FileStartupAction)
+            // Only the window opened at startup restores the session; further windows start empty.
+            switch (options.RestoreSession ? settings.FileStartupAction : FileStartupAction.NewFile)
             {
                 case FileStartupAction.RestoreSession:
                     sessionFolder = await tabs.RestoreSessionAsync();
@@ -94,7 +106,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         UpdateTitle();
         UpdateTabBar();
         HookWindowClosing();
-        Services.X11Window.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "typedown.png"));
+        Services.X11Window.SetIcon(nativeWindow, Path.Combine(AppContext.BaseDirectory, "Assets", "typedown.png"));
 
         await StartEditorAsync();
     }
@@ -513,6 +525,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         MainMenu.Items.Clear();
         var file = new MenuBarItem { Title = Loc.Get("File") };
         file.Items.Add(Item("New", async () => { if (tabs != null) await tabs.NewTabAsync(); }, ShortcutCommand.NewTab));
+        file.Items.Add(Item("NewWindow", () => NewWindow(), ShortcutCommand.NewWindow));
         file.Items.Add(Item("Open", async () => await OpenFileDialogAsync(), ShortcutCommand.Open));
         file.Items.Add(Item("OpenFolder", async () => await OpenFolderDialogAsync(), ShortcutCommand.OpenFolder));
         recentMenu = new MenuFlyoutSubItem { Text = Loc.Get("Recent") };
@@ -772,7 +785,11 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         var folder = target.IsFolder ? target.FullPath : Path.GetDirectoryName(target.FullPath)!;
         var menu = new MenuFlyout();
         void Add(string key, Action action) { var i = new MenuFlyoutItem { Text = Loc.Get(key) }; i.Click += (_, _) => action(); menu.Items.Add(i); }
-        if (!target.IsFolder) Add("Open", async () => { if (tabs != null) await tabs.OpenFileAsync(target.FullPath); });
+        if (!target.IsFolder)
+        {
+            Add("Open", async () => { if (tabs != null) await tabs.OpenFileAsync(target.FullPath); });
+            Add("OpenInNewWindow", () => NewWindow(target.FullPath));
+        }
         Add("NewFileHere", async () => await CreateInFolderAsync(folder, file: true));
         Add("NewFolderHere", async () => await CreateInFolderAsync(folder, file: false));
         menu.Items.Add(new MenuFlyoutSeparator());
@@ -1029,7 +1046,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
 
     private void ApplyTheme(bool post)
     {
-        if (App.MainWindow?.Content is FrameworkElement root)
+        if (window?.Content is FrameworkElement root)
             root.RequestedTheme = settings.Theme == AppTheme.System ? ElementTheme.Default : IsDarkTheme ? ElementTheme.Dark : ElementTheme.Light;
         if (post) _ = Post("ThemeChanged", ThemePayload());
     }
@@ -1154,7 +1171,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     {
         try
         {
-            if (App.MainWindow?.AppWindow is { } appWindow)
+            if (window?.AppWindow is { } appWindow)
                 appWindow.Closing += (_, args) =>
                 {
                     if (closing) return;
@@ -1176,14 +1193,20 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         tabs?.SaveSession(workFolder);
         settings.Save();
         document?.Dispose();
-        Application.Current.Exit();
+        // Closing the window is enough: the app exits once the last one is gone.
+        if (window != null) window.Close();
+        else Application.Current.Exit();
     }
+
+    /// <summary>Opens another window, optionally with a file already loaded.</summary>
+    private void NewWindow(string? file = null) => App.CreateWindow(file);
 
     private void UpdateTitle()
     {
         var title = document?.Title ?? "Typedown";
-        if (App.MainWindow != null) App.MainWindow.Title = title;
-        Services.X11Window.SetTitle(title); // Uno publishes WM_NAME as Latin-1; non-ASCII titles need UTF-8
+        if (window != null) window.Title = title;
+        // Uno publishes WM_NAME as Latin-1; non-ASCII titles need UTF-8, and each window gets its own.
+        Services.X11Window.SetTitle(nativeWindow, title);
         StatusText.Text = document?.FilePath ?? Loc.Get("Untitled");
     }
 

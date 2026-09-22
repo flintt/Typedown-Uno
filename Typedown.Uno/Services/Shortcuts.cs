@@ -6,7 +6,7 @@ namespace Typedown.Uno.Services;
 /// <summary>A shell command that can be bound to a key.</summary>
 public enum ShortcutCommand
 {
-    NewTab, Open, OpenFolder, Save, SaveAs, ExportHtml, Print, ShareHedgeDoc, Settings, CloseTab, Exit,
+    NewTab, NewWindow, Open, OpenFolder, Save, SaveAs, ExportHtml, Print, ShareHedgeDoc, Settings, CloseTab, Exit,
     Find, FindNext, FindPrevious, SearchInFolder, SelectAll,
     NextTab, PreviousTab, SidePane, ReadingMode, SourceCode, InsertImage,
 }
@@ -88,6 +88,7 @@ public sealed class ShortcutMap
     private static readonly Dictionary<ShortcutCommand, Shortcut> Defaults = new()
     {
         [ShortcutCommand.NewTab] = Shortcut.Parse("Ctrl+N"),
+        [ShortcutCommand.NewWindow] = Shortcut.Parse("Ctrl+Shift+N"),
         [ShortcutCommand.Open] = Shortcut.Parse("Ctrl+O"),
         [ShortcutCommand.OpenFolder] = Shortcut.Parse("Ctrl+Shift+O"),
         [ShortcutCommand.Save] = Shortcut.Parse("Ctrl+S"),
