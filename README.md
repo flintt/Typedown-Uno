@@ -1,6 +1,26 @@
 # Typedown · Uno Platform 版
 
+[![最新版本](https://img.shields.io/github/v/release/flintt/Typedown-Uno?label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC)](https://github.com/flintt/Typedown-Uno/releases/latest)
+[![下载量](https://img.shields.io/github/downloads/flintt/Typedown-Uno/total?label=%E4%B8%8B%E8%BD%BD%E9%87%8F)](https://github.com/flintt/Typedown-Uno/releases)
+[![许可证](https://img.shields.io/github/license/flintt/Typedown-Uno?label=%E8%AE%B8%E5%8F%AF%E8%AF%81)](LICENSE)
+
 [Typedown](https://github.com/flintt/Typedown) 的跨平台移植：同一套 C# + XAML（Uno Platform，Skia 桌面端）在 **Linux / Windows / macOS** 上运行，编辑内核（React + Muya）与原版完全相同。
+
+## 下载
+
+去 **[最新发布](https://github.com/flintt/Typedown-Uno/releases/latest)** 拿对应平台的包。.NET 运行时已经打进包里，不需要另外安装。
+
+| 平台 | 下载 | 怎么用 |
+|---|---|---|
+| Debian / Ubuntu x64 | `typedown_*_amd64.deb` | `sudo dpkg -i typedown_*.deb`，会自动拉 `libgtk-3-0` 和 `libwebkit2gtk-4.1-0` |
+| 任意 Linux x64 | `Typedown-*-x86_64.AppImage` | `chmod +x` 后直接运行（同样需要上面两个系统库） |
+| Linux x64 便携版 | `Typedown-linux-x64-*.tar.gz` | 解压后 `./Typedown.Uno` |
+| Windows 10/11 x64 | `Typedown-win-x64.zip` | 解压即用；需要 WebView2 运行时（Win11 自带） |
+| macOS（Apple Silicon） | `Typedown-osx-arm64.tar.gz` | 解压后首次运行右键 → 打开（未签名） |
+
+Windows 上用原生 WinUI 版本体验更好：**[flintt/Typedown](https://github.com/flintt/Typedown/releases/latest)**（安装包 / 便携版 / MSIX）。
+
+遇到问题请开 [issue](https://github.com/flintt/Typedown-Uno/issues/new/choose)——先在 帮助 → 关于 里点「复制信息」，把版本块贴进来。本仓库的 issue 由 AI（Claude Code）分析和修复。
 
 ## 功能
 
@@ -18,17 +38,15 @@
 
 ## 运行
 
-从 [Releases](../../releases) 下载对应平台的包。`.NET 运行时已经打进包里`，不需要另外安装。
+运行时依赖（系统提供，其余都在包里）：
 
-| 平台 | 发布格式 | 运行时依赖（系统提供） |
-|---|---|---|
-| Linux x64 | `.deb`、`.AppImage`、`.tar.gz`（便携） | `libgtk-3-0`、`libwebkit2gtk-4.1-0`、`libx11-6`；Ubuntu 22.04+/Debian 12+ 装上即可（`.deb` 会自动拉） |
-| Windows 10/11 x64 | `.zip`（便携，解压即用） | WebView2 运行时（Win11 自带，Win10 多数已随 Edge 安装） |
-| macOS（Apple Silicon） | `.tar.gz` | 无；首次运行右键 → 打开（未签名） |
+| 平台 | 需要的系统组件 |
+|---|---|
+| Linux x64 | `libgtk-3-0`、`libwebkit2gtk-4.1-0`、`libx11-6`；Ubuntu 22.04+ / Debian 12+ 装上即可 |
+| Windows 10/11 x64 | WebView2 运行时（Win11 自带，Win10 多数已随 Edge 安装） |
+| macOS（Apple Silicon） | 无 |
 
-Linux 安装：`sudo dpkg -i typedown_*.deb` 或给 AppImage 加执行权限直接运行；便携版解压后 `./Typedown.Uno`。
-
-设置、会话和运行日志（`debug.log`）保存在 `~/.local/share/Typedown.Uno/`（Windows：`%LOCALAPPDATA%\Typedown.Uno\`）。
+设置、会话和运行日志（`debug.log`）保存在 `~/.local/share/Typedown.Uno/`（Windows：`%LOCALAPPDATA%\Typedown.Uno\`，macOS：`~/Library/Application Support/Typedown.Uno/`）。
 
 ### Linux 说明
 
@@ -64,3 +82,7 @@ dotnet publish Typedown.Uno/Typedown.Uno.csproj -f net9.0-desktop -c Release -r 
 - 图床上传未实现（按需求暂不做）。
 - 每个窗口有独立的文档、标签和侧栏；会话恢复只作用于启动时的第一个窗口，退出时保存最后关闭窗口的标签列表。
 - Linux 上编辑器是一个原生 WebKit 窗口，因此无法与 XAML 控件重叠动画；对话框会覆盖在它上面。
+
+## 许可证
+
+MIT，沿用上游 [byxiaozhi/Typedown](https://github.com/byxiaozhi/Typedown) 的许可证（见 `LICENSE`）。编辑内核来自 [MarkText](https://github.com/marktext/marktext) 的 Muya（同为 MIT）。
