@@ -97,9 +97,14 @@ jobs:
           cat >> notes.md <<'MD'
           | File | Platform |
           |---|---|
-          | `Typedown-linux-x64.tar.gz` | Linux x64 (needs `libgtk-3-0`, `libwebkit2gtk-4.1-0`; run `./Typedown.Uno`, on Wayland set `GDK_BACKEND=x11`) |
-          | `Typedown-win-x64.zip` | Windows 10/11 x64 (needs the WebView2 runtime, present on Windows 11) |
-          | `Typedown-osx-arm64.tar.gz` | macOS Apple Silicon (unsigned: right-click → Open the first time) |
+          | `typedown_*_amd64.deb` | Debian / Ubuntu x64 — `sudo dpkg -i typedown_*.deb`, pulls `libgtk-3-0` and `libwebkit2gtk-4.1-0` |
+          | `Typedown-*-x86_64.AppImage` | Any Linux x64 — `chmod +x` and run (same two system libraries required) |
+          | `Typedown-linux-x64*.tar.gz` | Linux x64 portable — extract and run `./Typedown.Uno` |
+          | `Typedown-win-x64.zip` | Windows 10/11 x64 — needs the WebView2 runtime (present on Windows 11) |
+          | `Typedown-osx-arm64.tar.gz` | macOS Apple Silicon — unsigned: right-click → Open the first time |
+
+          The .NET runtime is bundled; nothing else to install. Settings, session and `debug.log` live in
+          `~/.local/share/Typedown.Uno/` (`%LOCALAPPDATA%\Typedown.Uno\` on Windows).
           MD
           if gh release view "${{ github.ref_name }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
             gh release edit "${{ github.ref_name }}" --repo "${{ github.repository }}" --title "Typedown Uno ${{ github.ref_name }}" --notes-file notes.md
