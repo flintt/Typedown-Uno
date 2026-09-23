@@ -75,7 +75,7 @@ public sealed class AppSettings : INotifyPropertyChanged
     /// Source mode shows the raw Markdown, reading mode only the rendered document: the two contradict each
     /// other, so turning one on turns the other off.
     /// </summary>
-    [EditorOption] public bool SourceCode { get => sourceCode; set { Set(ref sourceCode, value); if (value) ReadOnly = false; } }
+    [EditorOption] public bool SourceCode { get => sourceCode; set { Set(ref sourceCode, value); if (value && ReadOnly) ReadOnly = false; } }
 
     private bool focusMode;
     [EditorOption] public bool FocusMode { get => focusMode; set => Set(ref focusMode, value); }
@@ -88,7 +88,7 @@ public sealed class AppSettings : INotifyPropertyChanged
     /// Reading mode: only the rendered document, no caret, no edits. Mutually exclusive with
     /// <see cref="SourceCode"/>; focus and typewriter mode follow the caret and are ignored while it is on.
     /// </summary>
-    [EditorOption] public bool ReadOnly { get => readOnly; set { Set(ref readOnly, value); if (value) SourceCode = false; } }
+    [EditorOption] public bool ReadOnly { get => readOnly; set { Set(ref readOnly, value); if (value && SourceCode) SourceCode = false; } }
 
     private bool showParagraphMarker = true;
     [EditorOption] public bool ShowParagraphMarker { get => showParagraphMarker; set => Set(ref showParagraphMarker, value); }

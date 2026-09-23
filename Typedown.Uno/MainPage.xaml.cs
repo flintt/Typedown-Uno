@@ -75,6 +75,9 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         tabs.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(UpdateTabBar);
         TabBar.TabItemsSource = tabs.Tabs;
         settings.PropertyChanged += OnSettingChanged;
+        // The settings are one object shared by every window, so a page that goes away has to take its handlers
+        // with it — otherwise the next settings change runs them against a window that no longer exists.
+        Unloaded += (_, _) => DetachFromSettings();
         RegisterHostFunctions(transport);
         transport.MessageReceived += OnEditorMessage;
 
@@ -586,6 +589,15 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private MenuFlyoutSubItem? recentMenu;
 
     private readonly List<System.ComponentModel.PropertyChangedEventHandler> menuToggleHandlers = new();
+
+    /// <summary>Drops every subscription this page holds on the shared settings.</summary>
+    private void DetachFromSettings()
+    {
+        settings.PropertyChanged -= OnSettingChanged;
+        foreach (var handler in menuToggleHandlers) settings.PropertyChanged -= handler;
+        menuToggleHandlers.Clear();
+        Services.X11Window.WheelScrolled -= OnNativeWheel;
+    }
 
     private void BuildMenus()
     {
@@ -1400,7 +1412,6 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     {
         AddHandler(UIElement.PointerWheelChangedEvent, new PointerEventHandler((_, _) => lastXamlWheel = DateTime.UtcNow), true);
         Services.X11Window.WheelScrolled += OnNativeWheel;
-        Unloaded += (_, _) => Services.X11Window.WheelScrolled -= OnNativeWheel;
     }
 
     private void OnNativeWheel(IntPtr source, int x, int y, int notches)
