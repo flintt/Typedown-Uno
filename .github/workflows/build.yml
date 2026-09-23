@@ -63,6 +63,8 @@ jobs:
           # appimagetool is a single binary; skipped automatically when the download fails
           curl -fsSL -o /tmp/appimagetool https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage \
             && chmod +x /tmp/appimagetool && sudo mv /tmp/appimagetool /usr/local/bin/appimagetool || true
+          # appimagetool is itself an AppImage and the runners have no libfuse2; this makes it self-extract.
+          export APPIMAGE_EXTRACT_AND_RUN=1
           version="${GITHUB_REF_NAME#v}"
           [[ "$version" =~ ^[0-9] ]] || version="0.0.0-$(date +%Y%m%d)"
           ./packaging/build-linux-packages.sh "publish/Typedown-${{ matrix.name }}" "$version" dist

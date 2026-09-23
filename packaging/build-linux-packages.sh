@@ -111,7 +111,12 @@ Terminal=false
 MimeType=text/markdown;text/x-markdown;
 DESKTOP
   cp "$APPDIR/$NAME.desktop" "$APPDIR/usr/share/applications/"
-  ARCH=x86_64 appimagetool "$APPDIR" "$OUT/Typedown-$VERSION-x86_64.AppImage" >/dev/null
+  # A failing appimagetool (no libfuse2, no network…) must not take the other packages down with it.
+  if ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 appimagetool "$APPDIR" "$OUT/Typedown-$VERSION-x86_64.AppImage" >/dev/null 2>&1; then
+    echo "    AppImage built"
+  else
+    echo "    AppImage build failed, continuing without it" >&2
+  fi
   rm -rf "$(dirname "$APPDIR")"
 else
   echo "==> AppImage skipped (appimagetool not installed)"
