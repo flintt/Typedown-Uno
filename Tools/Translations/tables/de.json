@@ -229,5 +229,6 @@
  "InsertColumnLeft": "Spalte links einfügen",
  "InsertColumnRight": "Spalte rechts einfügen",
  "DeleteColumn": "Spalte löschen",
- "ThemeFolder": "Themenordner"
+ "ThemeFolder": "Themenordner",
+ "ReloadThemes": "Themen neu laden"
 }

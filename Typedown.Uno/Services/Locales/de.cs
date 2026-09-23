@@ -237,5 +237,6 @@ public static partial class LocaleTables
         ["InsertColumnRight"] = "Spalte rechts einfügen",
         ["DeleteColumn"] = "Spalte löschen",
         ["ThemeFolder"] = "Themenordner",
+        ["ReloadThemes"] = "Themen neu laden",
     };
 }

@@ -768,13 +768,32 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         view.Items.Add(new MenuFlyoutSeparator());
         view.Items.Add(Toggle("SidePane", () => settings.SidePaneOpen, v => settings.SidePaneOpen = v, ShortcutCommand.SidePane));
         var theme = new MenuFlyoutSubItem { Text = Loc.Get("Theme") };
+        var usingCustom = !string.IsNullOrEmpty(settings.CustomTheme);
         foreach (var t in Enum.GetValues<AppTheme>())
         {
             var value = t;
-            var item = new RadioMenuFlyoutItem { Text = Loc.Get("Theme" + t), IsChecked = settings.Theme == t, GroupName = "theme" };
-            item.Click += (_, _) => settings.Theme = value;
+            var item = new RadioMenuFlyoutItem { Text = Loc.Get("Theme" + t), IsChecked = !usingCustom && settings.Theme == t, GroupName = "theme" };
+            item.Click += (_, _) => { settings.CustomTheme = ""; settings.Theme = value; };
             theme.Items.Add(item);
         }
+        // Themes from the themes folder, in the same group as the built-in ones (see docs/custom-theme.md).
+        var customThemes = Services.ThemeFiles.List();
+        if (customThemes.Count > 0)
+        {
+            theme.Items.Add(new MenuFlyoutSeparator());
+            foreach (var custom in customThemes)
+            {
+                var id = custom.Id;
+                var item = new RadioMenuFlyoutItem { Text = custom.Name, IsChecked = settings.CustomTheme == id, GroupName = "theme" };
+                item.Click += (_, _) => settings.CustomTheme = id;
+                theme.Items.Add(item);
+            }
+        }
+        theme.Items.Add(new MenuFlyoutSeparator());
+        // Picks up a theme that was just added or edited, without restarting.
+        var reload = new MenuFlyoutItem { Text = Loc.Get("ReloadThemes") };
+        reload.Click += (_, _) => { BuildMenus(); ApplyTheme(post: true); };
+        theme.Items.Add(reload);
         view.Items.Add(theme);
         MainMenu.Items.Add(view);
 
@@ -1345,7 +1364,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             switch (name)
             {
                 case nameof(AppSettings.Theme):
-                case nameof(AppSettings.CustomTheme): ApplyTheme(post: true); break;
+                case nameof(AppSettings.CustomTheme): ApplyTheme(post: true); BuildMenus(); break;
                 case nameof(AppSettings.SidePaneOpen) or nameof(AppSettings.SidePanePage) or nameof(AppSettings.SidePaneWidth):
                     ApplySidePane();
                     if (settings.SidePaneOpen && settings.SidePanePage == 1) RefreshOutline();

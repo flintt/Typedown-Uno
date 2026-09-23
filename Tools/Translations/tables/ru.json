@@ -229,5 +229,6 @@
  "InsertColumnLeft": "Вставить столбец слева",
  "InsertColumnRight": "Вставить столбец справа",
  "DeleteColumn": "Удалить столбец",
- "ThemeFolder": "Папка тем"
+ "ThemeFolder": "Папка тем",
+ "ReloadThemes": "Перезагрузить темы"
 }

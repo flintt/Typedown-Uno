@@ -229,5 +229,6 @@
  "InsertColumnLeft": "Insertar columna a la izquierda",
  "InsertColumnRight": "Insertar columna a la derecha",
  "DeleteColumn": "Eliminar la columna",
- "ThemeFolder": "Carpeta de temas"
+ "ThemeFolder": "Carpeta de temas",
+ "ReloadThemes": "Recargar los temas"
 }
