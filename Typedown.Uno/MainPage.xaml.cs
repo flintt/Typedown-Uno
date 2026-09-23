@@ -1299,13 +1299,18 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         // the text colour follows the panel it sits on when the theme does not name one.
         var foreground = Brush(theme?.Foreground) ?? Readable(theme?.Surface ?? theme?.Background);
 
-        Set(this, background, ApplyTo.Background);
-        Set(SidePane, surface, ApplyTo.Background);
-        Set(SearchPanel, surface, ApplyTo.Background);
-        Set(StatusBar, surface, ApplyTo.Background);
+        // The panels carry their built-in colour in the markup, so "no colour from the theme" has to put that
+        // colour back rather than clear the property — the probes hold the right one for the current theme.
+        var panelDefault = ThemePanelProbe.Background;
+        var borderDefault = ThemePanelProbe.BorderBrush;
+        Set(this, background ?? ThemePageProbe.Background, ApplyTo.Background);
+        Set(SidePane, surface ?? panelDefault, ApplyTo.Background);
+        Set(SearchPanel, surface ?? panelDefault, ApplyTo.Background);
+        Set(StatusBar, surface ?? panelDefault, ApplyTo.Background);
+        Set(SidePane, border ?? borderDefault, ApplyTo.Border);
+        // These two have no colour of their own in the markup: clearing gives them their control style back.
         Set(MainMenu, surface, ApplyTo.Background);
         Set(TabBar, surface, ApplyTo.Background);
-        Set(SidePane, border, ApplyTo.Border);
         Set(StatusBar, foreground, ApplyTo.Foreground);
         Set(MainMenu, foreground, ApplyTo.Foreground);
         Set(SidePane, foreground, ApplyTo.Foreground);
@@ -1328,6 +1333,9 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             _ => null,
         };
         if (property == null) return;
+        // Clearing goes back to the style, where the theme resource lives, so the built-in light/dark colours
+        // come back and keep following the system. (Setting these in the markup instead would make the clear
+        // wipe the colour altogether — which is how the menu bar ended up a white strip in the dark themes.)
         if (brush == null) element.ClearValue(property);
         else element.SetValue(property, brush);
     }

@@ -126,6 +126,10 @@
       </Grid>
     </Grid>
 
+    <!-- Never shown: these carry the built-in colours for the current light/dark theme, so dropping a custom
+         theme can put them back. Clearing the properties instead would lose the theme resource for good. -->
+    <Border x:Name="ThemePageProbe" Visibility="Collapsed" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"/>
+    <Border x:Name="ThemePanelProbe" Visibility="Collapsed" Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"/>
     <Grid x:Name="StatusBar" Grid.Row="2" Padding="8,3" ColumnSpacing="12" Background="{ThemeResource LayerFillColorDefaultBrush}">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="*"/>
