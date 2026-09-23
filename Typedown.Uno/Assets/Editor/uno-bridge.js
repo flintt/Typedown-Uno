@@ -40,7 +40,7 @@
             return;
         }
         // Alt+1..9 belongs to the tab bar, which lives in the shell; the editor never does anything with it.
-        if (e.altKey && !ctrl && !e.shiftKey && key.length === 1 && key >= '1' && key <= '9') {
+        if (e.altKey && !ctrl && !e.shiftKey && key.length === 1 && key >= '0' && key <= '9') {
             e.preventDefault();
             e.stopPropagation();
             send(JSON.stringify({ type: 'message', name: 'Shortcut', args: { key: key, ctrl: false, shift: false, alt: true } }));

@@ -21,10 +21,12 @@ tar -czf "$OUT/Typedown-linux-x64-$VERSION.tar.gz" -C "$PUBLISH" .
 # ---- .deb -------------------------------------------------------------------------------------------------
 echo "==> deb"
 ROOT=$(mktemp -d)
-install -d "$ROOT/DEBIAN" "$ROOT/opt/$NAME" "$ROOT/usr/bin" "$ROOT/usr/share/applications" "$ROOT/usr/share/icons/hicolor/256x256/apps"
+install -d "$ROOT/DEBIAN" "$ROOT/opt/$NAME" "$ROOT/usr/bin" "$ROOT/usr/share/applications" "$ROOT/usr/share/icons/hicolor/256x256/apps" "$ROOT/usr/share/doc/$NAME"
 cp -r "$PUBLISH"/. "$ROOT/opt/$NAME/"
 chmod +x "$ROOT/opt/$NAME/Typedown.Uno"
 [ -f "$PUBLISH/Assets/typedown.png" ] && cp "$PUBLISH/Assets/typedown.png" "$ROOT/usr/share/icons/hicolor/256x256/apps/$NAME.png"
+# The theme document belongs where a Debian user looks for documentation as well as next to the themes.
+[ -f "$PUBLISH/Assets/Themes/custom-theme.md" ] && cp "$PUBLISH/Assets/Themes/custom-theme.md" "$ROOT/usr/share/doc/$NAME/custom-theme.md"
 
 cat > "$ROOT/usr/bin/$NAME" <<'LAUNCH'
 #!/bin/sh

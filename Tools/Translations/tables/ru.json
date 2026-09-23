@@ -230,5 +230,6 @@
  "InsertColumnRight": "Вставить столбец справа",
  "DeleteColumn": "Удалить столбец",
  "ThemeFolder": "Папка тем",
- "ReloadThemes": "Перезагрузить темы"
+ "ReloadThemes": "Перезагрузить темы",
+ "ThemeDocument": "Как написать тему"
 }

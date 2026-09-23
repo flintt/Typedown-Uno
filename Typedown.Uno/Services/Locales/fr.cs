@@ -238,5 +238,6 @@ public static partial class LocaleTables
         ["DeleteColumn"] = "Supprimer la colonne",
         ["ThemeFolder"] = "Dossier des thèmes",
         ["ReloadThemes"] = "Recharger les thèmes",
+        ["ThemeDocument"] = "Comment écrire un thème",
     };
 }

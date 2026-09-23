@@ -238,5 +238,6 @@ public static partial class LocaleTables
         ["DeleteColumn"] = "Удалить столбец",
         ["ThemeFolder"] = "Папка тем",
         ["ReloadThemes"] = "Перезагрузить темы",
+        ["ThemeDocument"] = "Как написать тему",
     };
 }

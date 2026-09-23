@@ -238,5 +238,6 @@ public static partial class LocaleTables
         ["DeleteColumn"] = "列を削除",
         ["ThemeFolder"] = "テーマフォルダー",
         ["ReloadThemes"] = "テーマを再読み込み",
+        ["ThemeDocument"] = "テーマの書き方",
     };
 }

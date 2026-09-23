@@ -100,6 +100,20 @@ public sealed class TabsViewModel : INotifyPropertyChanged
         _ = document.Restore(back);
     }
 
+    /// <summary>The tab that was active before this one, for the shortcut that jumps back and forth.</summary>
+    private DocumentTab? previousTab;
+
+    /// <summary>
+    /// Back to the tab used before this one — two tabs out of many, switched between the way Alt+Tab switches
+    /// between two windows. Falls back to the next tab when there is no history yet.
+    /// </summary>
+    public Task SwitchToLastUsedAsync()
+    {
+        if (previousTab != null && previousTab != ActiveTab && Tabs.Contains(previousTab))
+            return SwitchToAsync(previousTab);
+        return SwitchRelativeAsync(1);
+    }
+
     public async Task SwitchToAsync(DocumentTab tab)
     {
         if (tab == ActiveTab || !Tabs.Contains(tab)) return;
@@ -107,6 +121,7 @@ public sealed class TabsViewModel : INotifyPropertyChanged
         try
         {
             document.Capture(ActiveTab);
+            previousTab = ActiveTab;
             ActiveTab = tab;
             await document.Restore(tab);
         }

@@ -230,5 +230,6 @@
  "InsertColumnRight": "Insérer une colonne à droite",
  "DeleteColumn": "Supprimer la colonne",
  "ThemeFolder": "Dossier des thèmes",
- "ReloadThemes": "Recharger les thèmes"
+ "ReloadThemes": "Recharger les thèmes",
+ "ThemeDocument": "Comment écrire un thème"
 }

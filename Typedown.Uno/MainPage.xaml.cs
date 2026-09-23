@@ -654,6 +654,48 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     /// <summary>The theme entries of the View menu, so the tick can move without rebuilding the menu.</summary>
     private readonly List<(RadioMenuFlyoutItem Item, string? CustomId, AppTheme? BuiltIn)> themeMenuItems = new();
 
+    /// <summary>
+    /// Gives a dialog the colours of the custom theme, so that opening one over a themed window does not drop
+    /// back to the built-in palette. A theme that names no colours leaves the dialog as it is.
+    /// </summary>
+    private void PaintFromTheme(ContentDialog dialog)
+    {
+        var theme = Services.ThemeFiles.Find(settings.CustomTheme);
+        if (theme == null) return;
+        var background = Brush(theme.Background) ?? Brush(theme.Surface);
+        var foreground = Brush(theme.Foreground) ?? Readable(theme.Surface ?? theme.Background);
+        if (background != null) dialog.Background = background;
+        if (foreground != null) dialog.Foreground = foreground;
+        // The accent reaches the buttons and switches through the resources their templates look up, which is
+        // resolved when the dialog is built — so it only works for a dialog that is created fresh each time.
+        if (ParseAccent(theme.Accent) is not { } accent) return;
+        var accentBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(255, (byte)accent.Item1, (byte)accent.Item2, (byte)accent.Item3));
+        foreach (var key in new[] { "AccentFillColorDefaultBrush", "AccentFillColorSecondaryBrush", "AccentFillColorTertiaryBrush", "AccentControlElevationBorderBrush" })
+            dialog.Resources[key] = accentBrush;
+        var onAccent = Readable($"#{accent.Item1:x2}{accent.Item2:x2}{accent.Item3:x2}");
+        if (onAccent != null)
+            foreach (var key in new[] { "TextOnAccentFillColorPrimaryBrush", "TextOnAccentFillColorSecondaryBrush" })
+                dialog.Resources[key] = onAccent;
+    }
+
+    /// <summary>Opens the document that explains the theme format, which ships next to the app.</summary>
+    internal static void OpenThemeDocument()
+    {
+        try
+        {
+            Services.ThemeFiles.EnsureFolder();
+            var path = File.Exists(Services.ThemeFiles.DocumentPath)
+                ? Services.ThemeFiles.DocumentPath
+                : System.IO.Path.Combine(Services.ThemeFiles.BundledFolder, "custom-theme.md");
+            if (File.Exists(path))
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Error("open theme document", ex);
+        }
+    }
+
     private void UpdateThemeChecks()
     {
         var custom = settings.CustomTheme;
@@ -798,7 +840,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             foreach (var custom in customThemes)
             {
                 var id = custom.Id;
-                var item = new RadioMenuFlyoutItem { Text = custom.Name, GroupName = "theme" };
+                var item = new RadioMenuFlyoutItem { Text = Services.ThemeFiles.DisplayName(custom, customThemes), GroupName = "theme" };
                 item.Click += (_, _) => settings.CustomTheme = id;
                 themeMenuItems.Add((item, id, null));
                 theme.Items.Add(item);
@@ -807,6 +849,9 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         theme.Items.Add(new MenuFlyoutSeparator());
         // Picks up a theme that was just added or edited, without restarting. Rebuilding the menus has to wait
         // until this click is over: the menu would otherwise be torn down while it is still on screen.
+        var themeDoc = new MenuFlyoutItem { Text = Loc.Get("ThemeDocument") };
+        themeDoc.Click += (_, _) => OpenThemeDocument();
+        theme.Items.Add(themeDoc);
         var reload = new MenuFlyoutItem { Text = Loc.Get("ReloadThemes") };
         reload.Click += (_, _) => DispatcherQueue.TryEnqueue(() => { BuildMenus(); ApplyTheme(post: true); });
         theme.Items.Add(reload);
@@ -879,6 +924,9 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     /// </summary>
     private void AddTabNumberAccelerators()
     {
+        var last = new KeyboardAccelerator { Key = Windows.System.VirtualKey.Number0, Modifiers = Windows.System.VirtualKeyModifiers.Menu };
+        last.Invoked += (sender, e) => { e.Handled = true; if (tabs != null) _ = tabs.SwitchToLastUsedAsync(); };
+        KeyboardAccelerators.Add(last);
         for (var n = 1; n <= 9; n++)
         {
             var index = n == 9 ? int.MaxValue : n - 1;
@@ -927,6 +975,8 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             case (_, false, false) when alt && key.Length == 1 && key[0] is >= '1' and <= '9':
                 await tabs.SwitchToIndexAsync(key[0] == '9' ? int.MaxValue : key[0] - '1');
                 break;
+            // Alt+0 goes back to the tab used before this one, so two tabs out of many can be swapped between.
+            case ("0", false, false) when alt: await tabs.SwitchToLastUsedAsync(); break;
         }
     }
 
@@ -1477,6 +1527,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             return;
         }
         var dialog = new SettingsDialog(settings) { XamlRoot = XamlRoot, RequestedTheme = DialogTheme };
+        PaintFromTheme(dialog);
         // A dialog takes the keyboard with it, so the shortcut has to be on the dialog as well for the second
         // press to close what the first one opened.
         if (settings.Shortcuts.Get(ShortcutCommand.Settings).ToAccelerator() is { } accelerator)

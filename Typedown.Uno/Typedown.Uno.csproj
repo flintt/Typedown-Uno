@@ -41,6 +41,8 @@
     <UnoIcon Include="Icons/icon.png" ForegroundFile="Icons/icon_foreground.png" Color="#F3F3F3" ForegroundScale="0.7" />
     <!-- A plain copy for the Linux desktop entry and the packages. -->
     <None Include="Icons/icon.png" Link="Assets/typedown.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- The document that explains the theme format travels with the themes it describes. -->
+    <None Include="../docs/custom-theme.md" Link="Assets/Themes/custom-theme.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

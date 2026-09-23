@@ -235,5 +235,6 @@
  "InsertColumnRight": "Insert column right",
  "DeleteColumn": "Delete column",
  "ThemeFolder": "Theme folder",
- "ReloadThemes": "Reload themes"
+ "ReloadThemes": "Reload themes",
+ "ThemeDocument": "How to write a theme"
 }

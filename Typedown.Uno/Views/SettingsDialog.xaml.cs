@@ -204,7 +204,9 @@ public sealed partial class SettingsDialog : ContentDialog
                 Services.Log.Error("open theme folder", ex);
             }
         };
-        Add(Row("ThemeFolder", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { path, button } }));
+        var document = new Button { Content = Loc.Get("ThemeDocument") };
+        document.Click += (_, _) => MainPage.OpenThemeDocument();
+        Add(Row("ThemeFolder", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { path, button, document } }));
     }
 
     private void FolderRow(string key, Func<string?> get, Action<string?> set)

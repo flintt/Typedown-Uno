@@ -238,5 +238,6 @@ public static partial class LocaleTables
         ["DeleteColumn"] = "열 삭제",
         ["ThemeFolder"] = "테마 폴더",
         ["ReloadThemes"] = "테마 다시 불러오기",
+        ["ThemeDocument"] = "테마 작성 방법",
     };
 }

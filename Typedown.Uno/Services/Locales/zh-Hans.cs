@@ -243,5 +243,6 @@ public static partial class LocaleTables
         ["DeleteColumn"] = "删除列",
         ["ThemeFolder"] = "主题文件夹",
         ["ReloadThemes"] = "重新加载主题",
+        ["ThemeDocument"] = "如何编写主题",
     };
 }
