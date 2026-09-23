@@ -24,6 +24,8 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private Window? window;
     private IntPtr nativeWindow;
     private bool nativeIconApplied;
+    private DataPackage? clipboardBatch;
+    private DateTime clipboardBatchTime;
 
     private readonly AppSettings settings = AppSettings.Current;
     private EditorTransport? transport;
@@ -164,7 +166,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         // The folder is relative to the app directory (Uno's X11 WebView joins it onto the base directory),
         // so it must stay relative — an absolute path would be concatenated onto the base directory.
         core.SetVirtualHostNameToFolderMapping(EditorHost, "Assets/Editor", CoreWebView2HostResourceAccessKind.Allow);
-        core.NavigationCompleted += async (_, args) => { if (args.IsSuccess) await PostShortcutMap(); };
+        core.NavigationCompleted += async (_, args) => { if (args.IsSuccess) { await PostShortcutMap(); await PostContextMenuStrings(); } };
         EditorView.Source = new Uri($"http://{EditorHost}/index.html");
         Services.Log.Write("navigating to the editor page");
 
@@ -246,6 +248,43 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     /// <summary>The web view swallows key presses, so it must know which combinations to hand back.</summary>
     private Task PostShortcutMap() => Post("ShortcutMap", new { keys = System.Text.Json.Nodes.JsonNode.Parse(settings.Shortcuts.ForwardedKeysJson()) });
 
+    /// <summary>Labels for the page's own context menu (a host flyout would be drawn behind the native view).</summary>
+    private Task PostContextMenuStrings() => Post("ContextMenuStrings", new
+    {
+        copy = Loc.Get("Copy"),
+        cut = Loc.Get("Cut"),
+        paste = Loc.Get("Paste"),
+        selectAll = Loc.Get("SelectAll"),
+    });
+
+    /// <summary>Puts the clipboard's text through the editor's paste handler, as Ctrl+V would.</summary>
+    private async Task PasteClipboardTextAsync()
+    {
+        try
+        {
+            var view = Clipboard.GetContent();
+            if (view == null || !view.Contains(StandardDataFormats.Text)) return;
+            var text = await view.GetTextAsync();
+            if (string.IsNullOrEmpty(text)) return;
+            // Text copied from the editor also carries HTML; handing it over keeps bold, links and the rest,
+            // exactly as Ctrl+V does.
+            string? html = null;
+            if (view.Contains(StandardDataFormats.Html))
+            {
+                try { html = await view.GetHtmlFormatAsync(); } catch { }
+                // Windows wraps the fragment in a CF_HTML header; the editor wants the markup only.
+                var start = html?.IndexOf("<!--StartFragment-->", StringComparison.OrdinalIgnoreCase) ?? -1;
+                var end = html?.IndexOf("<!--EndFragment-->", StringComparison.OrdinalIgnoreCase) ?? -1;
+                if (start >= 0 && end > start) html = html![(start + "<!--StartFragment-->".Length)..end];
+            }
+            await Post("Paste", new { type = "normal", text, html });
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Error("paste from clipboard", ex);
+        }
+    }
+
     private void RegisterHostFunctions(EditorTransport t)
     {
         t.Handle("GetSettings", _ =>
@@ -263,11 +302,16 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         t.Handle("ResizeTable", args => new { row = args?["row"]?.GetValue<int>() ?? 2, column = args?["column"]?.GetValue<int>() ?? 2 });
         t.Handle("SetClipboard", args =>
         {
-            var package = new DataPackage();
+            // One copy arrives as two calls (text/html then text/plain). A fresh package per call would leave
+            // only the last format on the clipboard, so calls close together go into the same package.
             var type = args?["type"]?.GetValue<string>();
             var data = args?["data"]?.ToString() ?? "";
-            if (type == "text/html") package.SetHtmlFormat(data); else package.SetText(data);
-            try { Clipboard.SetContent(package); } catch { }
+            var now = DateTime.UtcNow;
+            if (clipboardBatch == null || now - clipboardBatchTime > TimeSpan.FromMilliseconds(500))
+                clipboardBatch = new DataPackage();
+            clipboardBatchTime = now;
+            if (type == "text/html") clipboardBatch.SetHtmlFormat(data); else clipboardBatch.SetText(data);
+            try { Clipboard.SetContent(clipboardBatch); } catch (Exception ex) { Services.Log.Error("set clipboard", ex); }
             return (object?)true;
         });
         t.Handle("OpenNewWindow", async args =>
@@ -356,6 +400,20 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                 break;
             case "ClipboardImageRequest":
                 DispatcherQueue.TryEnqueue(async () => await InsertClipboardImageAsync());
+                break;
+            case "ClipboardSetText":
+                var copyText = args?["text"]?.GetValue<string>();
+                if (!string.IsNullOrEmpty(copyText)) DispatcherQueue.TryEnqueue(() =>
+                {
+                    var package = new DataPackage();
+                    package.SetText(copyText);
+                    try { Clipboard.SetContent(package); } catch (Exception ex) { Services.Log.Error("copy to clipboard", ex); }
+                });
+                break;
+            case "ClipboardTextRequest":
+                // Paste from the page's context menu: WebKit refuses execCommand('paste'), so the host reads the
+                // clipboard and hands the text to the editor's own paste handler.
+                DispatcherQueue.TryEnqueue(async () => await PasteClipboardTextAsync());
                 break;
             case "ImagePasted":
                 var dataUrl = args?["dataUrl"]?.GetValue<string>();
@@ -1134,7 +1192,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                 case nameof(AppSettings.StatusBarOpen): ApplyStatusBar(); break;
                 case nameof(AppSettings.WordCountMethod): lastTocJson = null; break;
                 case nameof(AppSettings.RecentFiles): FillRecent(); break;
-                case nameof(AppSettings.Language): Loc.Apply(settings.Language); ApplyStrings(); BuildMenus(); UpdateTitle(); break;
+                case nameof(AppSettings.Language): Loc.Apply(settings.Language); ApplyStrings(); BuildMenus(); UpdateTitle(); _ = PostContextMenuStrings(); break;
                 case nameof(AppSettings.Shortcuts): BuildMenus(); _ = PostShortcutMap(); break;
             }
         });

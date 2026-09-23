@@ -30,6 +30,15 @@
         var key = e.key === 'Tab' ? 'tab' : e.key.toLowerCase();
         if (matches(findShortcut, key, ctrl, e.shiftKey, e.altKey)) { e.preventDefault(); e.stopPropagation(); showFind(); return; }
         if (key === 'escape' && !ctrl && findBar && findBar.style.display !== 'none') { e.preventDefault(); e.stopPropagation(); hideFind(); return; }
+        // Ctrl+C/Ctrl+X go through the editor so the clipboard carries the Markdown source, the same as the
+        // context menu and as the Windows edition. Ctrl+V stays native: the page's paste listener handles images.
+        if (ctrl && !e.shiftKey && !e.altKey && (key === 'c' || key === 'x') && window.__typedownMuya && selectedText()) {
+            if (key === 'x' && isReadOnly()) { e.preventDefault(); return; }
+            e.preventDefault();
+            e.stopPropagation();
+            local(key === 'c' ? 'Copy' : 'Cut', { type: 'normal', copyInfo: null });
+            return;
+        }
         for (var i = 0; i < forwarded.length; i++) {
             if (!matches(forwarded[i], key, ctrl, e.shiftKey, e.altKey)) continue;
             e.preventDefault();
@@ -117,6 +126,125 @@
         if (editor) editor.focus();
     }
 
+
+    // In-page context menu. The editor suppresses the native menu (it expects the host to show its own), and on
+    // Linux the web view is a separate native window, so a host flyout would be drawn behind it: the menu lives
+    // in the page, like the find bar. Labels come from the host ("ContextMenuStrings").
+    var menuStrings = { copy: 'Copy', cut: 'Cut', paste: 'Paste', selectAll: 'Select all' };
+    var contextMenu = null;
+
+    function isReadOnly() {
+        if (document.body.classList.contains('read-only')) return true;
+        var editable = document.querySelector('[contenteditable]');
+        return !!editable && editable.getAttribute('contenteditable') === 'false';
+    }
+
+    function selectedText() {
+        var s = window.getSelection();
+        return s ? s.toString() : '';
+    }
+
+    function hideContextMenu() {
+        if (contextMenu) contextMenu.style.display = 'none';
+    }
+
+    function selectAll() {
+        var root = document.getElementById('ag-editor-id');
+        if (isReadOnly()) {
+            if (!root) return;
+            var range = document.createRange();
+            range.selectNodeContents(root);
+            var sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+            return;
+        }
+        local('SelectAll');
+    }
+
+    function showContextMenu(x, y) {
+        if (!contextMenu) {
+            contextMenu = document.createElement('div');
+            contextMenu.id = 'uno-context-menu';
+            contextMenu.style.cssText = 'position:fixed;z-index:100001;display:none;min-width:150px;padding:4px;border-radius:6px;' +
+                'background:rgba(250,250,250,0.98);border:1px solid rgba(128,128,128,0.35);box-shadow:0 6px 18px rgba(0,0,0,0.18);' +
+                'font:13px system-ui,sans-serif;color:#222;user-select:none;';
+            document.body.appendChild(contextMenu);
+        }
+        var readOnly = isReadOnly();
+        // Remember the selection now: clicking the menu can collapse it, and WebKit refuses execCommand('copy')
+        // often enough that the host is the reliable way to reach the clipboard.
+        var text = selectedText();
+        var hasSelection = !!text;
+        function copyToHost() { send(JSON.stringify({ type: 'message', name: 'ClipboardSetText', args: { text: text } })); }
+        // Clicking the menu collapses the selection, and cut/paste act on the editor's own cursor: remember it
+        // while the menu opens and put it back before handing the command over.
+        var muya = window.__typedownMuya;
+        var savedCursor = muya && muya.contentState && muya.contentState.cursor
+            ? JSON.parse(JSON.stringify(muya.contentState.cursor)) : null;
+        function editorClipboard(name) {
+            if (!muya) return false;
+            restoreCursor();
+            local(name, { type: 'normal', copyInfo: null });
+            return true;
+        }
+        function restoreCursor() {
+            if (!muya || !savedCursor) return;
+            try {
+                muya.contentState.cursor = savedCursor;
+                muya.contentState.setCursor();
+            } catch (e) { }
+        }
+        contextMenu.textContent = '';
+        // Cut and paste change the document, so reading mode only offers copy and select all.
+        var items = [
+            // The editor's own copy puts Markdown and HTML on the clipboard (the host's SetClipboard), which keeps
+            // bold, code and links across a copy/paste; plain text is the fallback when there is no editor.
+            { label: menuStrings.copy, enabled: hasSelection, run: function () { if (!editorClipboard('Copy')) copyToHost(); } },
+            { label: menuStrings.cut, enabled: hasSelection && !readOnly, hidden: readOnly, run: function () { if (!editorClipboard('Cut')) { copyToHost(); local('DeleteSelection'); } } },
+            { label: menuStrings.paste, enabled: !readOnly, hidden: readOnly, run: function () { restoreCursor(); send(JSON.stringify({ type: 'message', name: 'ClipboardTextRequest', args: {} })); } },
+            { separator: true },
+            { label: menuStrings.selectAll, enabled: true, run: selectAll }
+        ];
+        items.forEach(function (item) {
+            if (item.hidden) return;
+            if (item.separator) {
+                var line = document.createElement('div');
+                line.style.cssText = 'height:1px;margin:4px 6px;background:rgba(128,128,128,0.3);';
+                contextMenu.appendChild(line);
+                return;
+            }
+            var row = document.createElement('div');
+            row.textContent = item.label;
+            row.style.cssText = 'padding:6px 12px;border-radius:4px;cursor:' + (item.enabled ? 'pointer' : 'default') + ';opacity:' + (item.enabled ? '1' : '0.4') + ';';
+            if (item.enabled) {
+                row.addEventListener('mouseenter', function () { row.style.background = 'rgba(128,128,128,0.18)'; });
+                row.addEventListener('mouseleave', function () { row.style.background = 'transparent'; });
+                row.addEventListener('mouseup', function (e) { e.preventDefault(); e.stopPropagation(); hideContextMenu(); item.run(); });
+            }
+            contextMenu.appendChild(row);
+        });
+        contextMenu.style.display = 'block';
+        // keep it inside the window
+        var rect = contextMenu.getBoundingClientRect();
+        contextMenu.style.left = Math.min(x, Math.max(0, window.innerWidth - rect.width - 4)) + 'px';
+        contextMenu.style.top = Math.min(y, Math.max(0, window.innerHeight - rect.height - 4)) + 'px';
+    }
+
+    window.addEventListener('contextmenu', function (e) {
+        if (contextMenu && contextMenu.contains(e.target)) { e.preventDefault(); return; }
+        e.preventDefault();
+        // the editor's own handler runs too and keeps its cursor in step; only the native menu is suppressed
+        showContextMenu(e.clientX, e.clientY);
+        // capture: the editor stops the event from bubbling out of its container
+    }, true);
+    window.addEventListener('mousedown', function (e) {
+        if (contextMenu && contextMenu.style.display !== 'none' && !contextMenu.contains(e.target)) hideContextMenu();
+    }, true);
+    window.addEventListener('keydown', function (e) { if (e.key === 'Escape') hideContextMenu(); }, true);
+    window.addEventListener('scroll', hideContextMenu, true);
+    window.addEventListener('blur', hideContextMenu);
+
     // Files dropped on the editor: the page is a native web view, so the host never sees the drop. WebKit exposes
     // the dropped paths as text/uri-list, which is enough for the host to open documents and insert images.
     window.addEventListener('dragover', function (e) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }, true);
@@ -173,6 +301,7 @@
                     if (forwarded[i].find) findShortcut = forwarded[i];
                 return;
             }
+            if (msg && msg.name === 'ContextMenuStrings') { menuStrings = Object.assign(menuStrings, msg.args || {}); return; }
             if (msg && msg.name === 'ShowFind') { if (msg.args && msg.args.opt) findOptions = msg.args.opt; showFind(msg.args && msg.args.value); return; }
             if (msg && msg.name === 'HideFind') { hideFind(); return; }
         } catch (e) { }

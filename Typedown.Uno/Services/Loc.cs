@@ -64,6 +64,7 @@ public static class Loc
         ["Exported"] = "已导出：{0}", ["AboutText"] = "Typedown（Uno Platform 版）\n跨平台 Markdown 编辑器，编辑内核来自 MarkText/Muya。",
         ["AboutEditor"] = "编辑内核", ["AboutWebEngine"] = "网页引擎", ["AboutSystem"] = "系统", ["AboutSession"] = "桌面会话",
         ["CopyInfo"] = "复制信息", ["Copied"] = "已复制", ["AboutIssue"] = "反馈问题时请附上以上信息。",
+        ["Copy"] = "复制", ["Cut"] = "剪切", ["Paste"] = "粘贴",
     };
 
     private static readonly Dictionary<string, string> En = new()
@@ -125,6 +126,7 @@ public static class Loc
         ["Exported"] = "Exported: {0}", ["AboutText"] = "Typedown (Uno Platform edition)\nCross-platform Markdown editor; editing engine from MarkText/Muya.",
         ["AboutEditor"] = "Editor engine", ["AboutWebEngine"] = "Web engine", ["AboutSystem"] = "System", ["AboutSession"] = "Desktop session",
         ["CopyInfo"] = "Copy details", ["Copied"] = "Copied", ["AboutIssue"] = "Please include these details in a bug report.",
+        ["Copy"] = "Copy", ["Cut"] = "Cut", ["Paste"] = "Paste",
     };
 
     public static string Language { get; private set; } = "en";
