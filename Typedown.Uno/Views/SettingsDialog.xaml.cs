@@ -8,7 +8,11 @@ public sealed partial class SettingsDialog : ContentDialog
     private readonly AppSettings settings;
     private bool loading = true;
 
-    private static readonly (string value, string label)[] Languages = { ("", "LangSystem"), ("zh-Hans", "中文（简体）"), ("en", "English") };
+    /// <summary>System first, then English and every table in <see cref="Services.LocaleTables"/>.</summary>
+    private static readonly (string value, string label)[] Languages =
+        new[] { ("", Loc.Get("LangSystem")), ("en", "English") }
+            .Concat(Services.LocaleTables.Names.OrderBy(x => x.Key).Select(x => (x.Key, x.Value)))
+            .ToArray();
     private static readonly string[] Indentations = { "1", "2", "4", "tab" };
     private static readonly string[] Directions = { "auto", "ltr", "rtl" };
 
@@ -39,7 +43,7 @@ public sealed partial class SettingsDialog : ContentDialog
     private void Build()
     {
         Section("General");
-        Combo("Language", Languages.Select(l => l.value == "" ? Loc.Get(l.label) : l.label), Math.Max(0, Array.FindIndex(Languages, l => l.value == settings.Language)),
+        Combo("Language", Languages.Select(l => l.label), Math.Max(0, Array.FindIndex(Languages, l => l.value == settings.Language)),
             i => settings.Language = Languages[i].value);
         Combo("Theme", Enum.GetValues<AppTheme>().Select(t => Loc.Get("Theme" + t)), (int)settings.Theme, i => settings.Theme = (AppTheme)i);
         Combo("StartupAction", Enum.GetValues<FileStartupAction>().Select(a => Loc.Get("Startup" + a)), (int)settings.FileStartupAction, i => settings.FileStartupAction = (FileStartupAction)i);
