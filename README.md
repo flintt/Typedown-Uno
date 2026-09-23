@@ -20,6 +20,8 @@
 
 Windows 上用原生 WinUI 版本体验更好：**[flintt/Typedown](https://github.com/flintt/Typedown/releases/latest)**（安装包 / 便携版 / MSIX）。
 
+主题可以自己写：一个 CSS 文件放进主题文件夹即可，格式见 **[自定义主题](docs/custom-theme.md)**。
+
 遇到问题请开 [issue](https://github.com/flintt/Typedown-Uno/issues/new/choose)——先在 帮助 → 关于 里点「复制信息」，把版本块贴进来。本仓库的 issue 由 AI（Claude Code）分析和修复。
 
 ## 功能

@@ -85,6 +85,7 @@ public partial class App : Application
             Environment.Exit(0);
             return;
         }
+        Services.ThemeFiles.EnsureFolder();
         Services.SingleInstance.FilesRequested += OnFilesFromAnotherLaunch;
         Services.SingleInstance.Listen();
         CreateWindow(files.FirstOrDefault(), restoreSession: files.Count == 0);

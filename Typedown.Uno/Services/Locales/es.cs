@@ -236,5 +236,6 @@ public static partial class LocaleTables
         ["InsertColumnLeft"] = "Insertar columna a la izquierda",
         ["InsertColumnRight"] = "Insertar columna a la derecha",
         ["DeleteColumn"] = "Eliminar la columna",
+        ["ThemeFolder"] = "Carpeta de temas",
     };
 }

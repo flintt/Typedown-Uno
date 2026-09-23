@@ -233,5 +233,6 @@
  "DeleteRow": "Delete row",
  "InsertColumnLeft": "Insert column left",
  "InsertColumnRight": "Insert column right",
- "DeleteColumn": "Delete column"
+ "DeleteColumn": "Delete column",
+ "ThemeFolder": "Theme folder"
 }

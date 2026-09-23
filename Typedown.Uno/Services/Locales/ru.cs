@@ -236,5 +236,6 @@ public static partial class LocaleTables
         ["InsertColumnLeft"] = "Вставить столбец слева",
         ["InsertColumnRight"] = "Вставить столбец справа",
         ["DeleteColumn"] = "Удалить столбец",
+        ["ThemeFolder"] = "Папка тем",
     };
 }

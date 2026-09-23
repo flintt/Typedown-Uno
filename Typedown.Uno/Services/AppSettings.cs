@@ -35,6 +35,13 @@ public sealed class AppSettings : INotifyPropertyChanged
     private AppTheme theme = AppTheme.System;
     public AppTheme Theme { get => theme; set => Set(ref theme, value); }
 
+    private string customTheme = "";
+    /// <summary>
+    /// File name (without .css) of a theme in the themes folder, or empty for the built-in theme in
+    /// <see cref="Theme"/>. A custom theme brings its own base theme along, so this wins when it is set.
+    /// </summary>
+    public string CustomTheme { get => customTheme; set => Set(ref customTheme, value); }
+
     private string language = "";
     /// <summary>"" = follow the system, otherwise "zh-Hans" / "en".</summary>
     public string Language { get => language; set => Set(ref language, value); }

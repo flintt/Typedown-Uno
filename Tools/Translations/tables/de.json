@@ -228,5 +228,6 @@
  "DeleteRow": "Zeile löschen",
  "InsertColumnLeft": "Spalte links einfügen",
  "InsertColumnRight": "Spalte rechts einfügen",
- "DeleteColumn": "Spalte löschen"
+ "DeleteColumn": "Spalte löschen",
+ "ThemeFolder": "Themenordner"
 }

@@ -228,5 +228,6 @@
  "DeleteRow": "Удалить строку",
  "InsertColumnLeft": "Вставить столбец слева",
  "InsertColumnRight": "Вставить столбец справа",
- "DeleteColumn": "Удалить столбец"
+ "DeleteColumn": "Удалить столбец",
+ "ThemeFolder": "Папка тем"
 }

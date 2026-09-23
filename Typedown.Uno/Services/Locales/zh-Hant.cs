@@ -241,5 +241,6 @@ public static partial class LocaleTables
         ["InsertColumnLeft"] = "在左側插入欄",
         ["InsertColumnRight"] = "在右側插入欄",
         ["DeleteColumn"] = "刪除欄",
+        ["ThemeFolder"] = "主題資料夾",
     };
 }

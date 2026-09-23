@@ -236,5 +236,6 @@ public static partial class LocaleTables
         ["InsertColumnLeft"] = "左に列を挿入",
         ["InsertColumnRight"] = "右に列を挿入",
         ["DeleteColumn"] = "列を削除",
+        ["ThemeFolder"] = "テーマフォルダー",
     };
 }

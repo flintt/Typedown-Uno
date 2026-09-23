@@ -241,5 +241,6 @@ public static partial class LocaleTables
         ["InsertColumnLeft"] = "在左侧插入列",
         ["InsertColumnRight"] = "在右侧插入列",
         ["DeleteColumn"] = "删除列",
+        ["ThemeFolder"] = "主题文件夹",
     };
 }

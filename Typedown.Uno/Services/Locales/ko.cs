@@ -236,5 +236,6 @@ public static partial class LocaleTables
         ["InsertColumnLeft"] = "왼쪽에 열 삽입",
         ["InsertColumnRight"] = "오른쪽에 열 삽입",
         ["DeleteColumn"] = "열 삭제",
+        ["ThemeFolder"] = "테마 폴더",
     };
 }

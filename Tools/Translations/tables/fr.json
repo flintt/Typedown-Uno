@@ -228,5 +228,6 @@
  "DeleteRow": "Supprimer la ligne",
  "InsertColumnLeft": "Insérer une colonne à gauche",
  "InsertColumnRight": "Insérer une colonne à droite",
- "DeleteColumn": "Supprimer la colonne"
+ "DeleteColumn": "Supprimer la colonne",
+ "ThemeFolder": "Dossier des thèmes"
 }

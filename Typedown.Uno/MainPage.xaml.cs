@@ -306,6 +306,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         {
             document!.EditorReady = true;
             var options = settings.EditorOptions();
+            options["themeCss"] = Services.ThemeFiles.Read(settings.CustomTheme);
             foreach (var (key, value) in JsonSerializer.SerializeToNode(document.GetLoadPayload(), EditorTransport.JsonOptions)!.AsObject())
                 options[key] = value?.DeepClone();
             return (object?)options;
@@ -1229,19 +1230,106 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         _ => Application.Current.RequestedTheme == ApplicationTheme.Dark,
     };
 
+    /// <summary>The built-in theme in force: a custom theme names the one it builds on.</summary>
+    private AppTheme EffectiveTheme
+    {
+        get
+        {
+            var custom = Services.ThemeFiles.Find(settings.CustomTheme);
+            return custom?.Base ?? settings.Theme;
+        }
+    }
+
     private object ThemePayload()
     {
-        var name = settings.Theme == AppTheme.Black ? "Black" : IsDarkTheme ? "Dark" : "Light";
+        var effective = EffectiveTheme;
+        var name = effective == AppTheme.Black ? "Black" : (effective == AppTheme.Dark || (effective == AppTheme.System && IsDarkTheme)) ? "Dark" : "Light";
         var bg = name switch { "Black" => (0, 0, 0), "Dark" => (32, 32, 32), _ => (249, 249, 249) };
+        var accent = ParseAccent(Services.ThemeFiles.Find(settings.CustomTheme)?.Accent) ?? (0, 120, 212);
         // Dictionary keys keep their case (the editor reads background.R/G/B/A but accentColor.r/g/b/a).
-        return new { theme = name, accentColor = new { r = 0, g = 120, b = 212, a = 1 }, background = new Dictionary<string, int> { ["R"] = bg.Item1, ["G"] = bg.Item2, ["B"] = bg.Item3, ["A"] = 1 } };
+        return new { theme = name, accentColor = new { r = accent.Item1, g = accent.Item2, b = accent.Item3, a = 1 }, background = new Dictionary<string, int> { ["R"] = bg.Item1, ["G"] = bg.Item2, ["B"] = bg.Item3, ["A"] = 1 } };
+    }
+
+    /// <summary>
+    /// Paints the window around the editor from the theme. A theme that says nothing about these keeps the
+    /// colours of the built-in theme it builds on, and clearing them puts those colours back.
+    /// </summary>
+    private void ApplyShellColours(Services.CustomTheme? theme)
+    {
+        var background = Brush(theme?.Background);
+        var surface = Brush(theme?.Surface) ?? background;
+        var foreground = Brush(theme?.Foreground);
+        var border = Brush(theme?.Border);
+
+        Set(this, background, ApplyTo.Background);
+        Set(SidePane, surface, ApplyTo.Background);
+        Set(SearchPanel, surface, ApplyTo.Background);
+        Set(StatusBar, surface, ApplyTo.Background);
+        Set(MainMenu, surface, ApplyTo.Background);
+        Set(TabBar, surface, ApplyTo.Background);
+        Set(SidePane, border, ApplyTo.Border);
+        Set(StatusBar, foreground, ApplyTo.Foreground);
+        Set(MainMenu, foreground, ApplyTo.Foreground);
+        Set(SidePane, foreground, ApplyTo.Foreground);
+    }
+
+    private enum ApplyTo { Background, Foreground, Border }
+
+    private static void Set(FrameworkElement? element, Brush? brush, ApplyTo what)
+    {
+        if (element == null) return;
+        // A null brush clears the local value, so the resource from the built-in theme applies again.
+        var property = what switch
+        {
+            ApplyTo.Background when element is Panel => Panel.BackgroundProperty,
+            ApplyTo.Background when element is Control => Control.BackgroundProperty,
+            ApplyTo.Foreground when element is Control => Control.ForegroundProperty,
+            ApplyTo.Foreground when element is TextBlock => TextBlock.ForegroundProperty,
+            ApplyTo.Border when element is Control => Control.BorderBrushProperty,
+            ApplyTo.Border when element is Grid => Grid.BorderBrushProperty,
+            _ => null,
+        };
+        if (property == null) return;
+        if (brush == null) element.ClearValue(property);
+        else element.SetValue(property, brush);
+    }
+
+    private static Brush? Brush(string? colour)
+    {
+        var rgb = ParseAccent(colour);
+        return rgb == null ? null : new SolidColorBrush(Windows.UI.Color.FromArgb(255, (byte)rgb.Value.Item1, (byte)rgb.Value.Item2, (byte)rgb.Value.Item3));
+    }
+
+    /// <summary>"#268bd2" or "#26d" from a theme's metadata.</summary>
+    private static (int, int, int)? ParseAccent(string? value)
+    {
+        var text = value?.Trim().TrimStart('#');
+        if (string.IsNullOrEmpty(text)) return null;
+        try
+        {
+            if (text.Length == 3)
+                return (Convert.ToInt32($"{text[0]}{text[0]}", 16), Convert.ToInt32($"{text[1]}{text[1]}", 16), Convert.ToInt32($"{text[2]}{text[2]}", 16));
+            if (text.Length >= 6)
+                return (Convert.ToInt32(text[..2], 16), Convert.ToInt32(text.Substring(2, 2), 16), Convert.ToInt32(text.Substring(4, 2), 16));
+        }
+        catch
+        {
+            // a theme with a broken accent keeps the default one
+        }
+        return null;
     }
 
     private void ApplyTheme(bool post)
     {
+        var effective = EffectiveTheme;
         if (window?.Content is FrameworkElement root)
-            root.RequestedTheme = settings.Theme == AppTheme.System ? ElementTheme.Default : IsDarkTheme ? ElementTheme.Dark : ElementTheme.Light;
-        if (post) _ = Post("ThemeChanged", ThemePayload());
+            root.RequestedTheme = effective == AppTheme.System ? ElementTheme.Default
+                : effective == AppTheme.Light ? ElementTheme.Light : ElementTheme.Dark;
+        ApplyShellColours(Services.ThemeFiles.Find(settings.CustomTheme));
+        if (!post) return;
+        _ = Post("ThemeChanged", ThemePayload());
+        // the theme's own CSS rides on the settings channel, next to the user's custom CSS
+        _ = Post("SettingsChanged", new Dictionary<string, object?> { ["themeCss"] = Services.ThemeFiles.Read(settings.CustomTheme) });
     }
 
     private void OnSettingChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -1256,7 +1344,8 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             }
             switch (name)
             {
-                case nameof(AppSettings.Theme): ApplyTheme(post: true); break;
+                case nameof(AppSettings.Theme):
+                case nameof(AppSettings.CustomTheme): ApplyTheme(post: true); break;
                 case nameof(AppSettings.SidePaneOpen) or nameof(AppSettings.SidePanePage) or nameof(AppSettings.SidePaneWidth):
                     ApplySidePane();
                     if (settings.SidePaneOpen && settings.SidePanePage == 1) RefreshOutline();

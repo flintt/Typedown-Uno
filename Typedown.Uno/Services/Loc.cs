@@ -64,7 +64,7 @@ public static class Loc
         ["Exported"] = "Exported: {0}", ["AboutText"] = "Typedown (Uno Platform edition)\nCross-platform Markdown editor; editing engine from MarkText/Muya.",
         ["AboutEditor"] = "Editor engine", ["AboutWebEngine"] = "Web engine", ["AboutSystem"] = "System", ["AboutSession"] = "Desktop session",
         ["CopyInfo"] = "Copy details", ["Copied"] = "Copied", ["AboutIssue"] = "Please include these details in a bug report.",
-        ["Copy"] = "Copy", ["Cut"] = "Cut", ["Paste"] = "Paste",
+        ["Copy"] = "Copy", ["Cut"] = "Cut", ["Paste"] = "Paste", ["ThemeFolder"] = "Theme folder",
         ["Duplicate"] = "Duplicate", ["DeleteParagraph"] = "Delete paragraph",
         ["InsertRowAbove"] = "Insert row above", ["InsertRowBelow"] = "Insert row below", ["DeleteRow"] = "Delete row",
         ["InsertColumnLeft"] = "Insert column left", ["InsertColumnRight"] = "Insert column right", ["DeleteColumn"] = "Delete column",

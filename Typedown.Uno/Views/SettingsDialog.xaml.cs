@@ -45,7 +45,28 @@ public sealed partial class SettingsDialog : ContentDialog
         Section("General");
         Combo("Language", Languages.Select(l => l.label), Math.Max(0, Array.FindIndex(Languages, l => l.value == settings.Language)),
             i => settings.Language = Languages[i].value);
-        Combo("Theme", Enum.GetValues<AppTheme>().Select(t => Loc.Get("Theme" + t)), (int)settings.Theme, i => settings.Theme = (AppTheme)i);
+        // Built-in themes first, then whatever CSS files the themes folder holds (see docs/custom-theme.md).
+        var builtIn = Enum.GetValues<AppTheme>();
+        var custom = Services.ThemeFiles.List();
+        var themeIndex = string.IsNullOrEmpty(settings.CustomTheme)
+            ? (int)settings.Theme
+            : builtIn.Length + Math.Max(0, custom.ToList().FindIndex(t => t.Id == settings.CustomTheme));
+        Combo("Theme",
+            builtIn.Select(t => Loc.Get("Theme" + t)).Concat(custom.Select(t => t.Name)),
+            themeIndex,
+            i =>
+            {
+                if (i < builtIn.Length)
+                {
+                    settings.CustomTheme = "";
+                    settings.Theme = (AppTheme)i;
+                }
+                else
+                {
+                    settings.CustomTheme = custom[i - builtIn.Length].Id;
+                }
+            });
+        ThemeFolderRow();
         Combo("StartupAction", Enum.GetValues<FileStartupAction>().Select(a => Loc.Get("Startup" + a)), (int)settings.FileStartupAction, i => settings.FileStartupAction = (FileStartupAction)i);
         Combo("FolderStartup", Enum.GetValues<FolderStartupAction>().Select(a => Loc.Get("FolderStartup" + a)), (int)settings.FolderStartupAction, i => settings.FolderStartupAction = (FolderStartupAction)i);
         FolderRow("StartupFolder", () => settings.StartupFolder, v => settings.StartupFolder = v);
@@ -156,6 +177,34 @@ public sealed partial class SettingsDialog : ContentDialog
         var box = new PasswordBox { Password = value, MinWidth = 220 };
         box.PasswordChanged += (_, _) => { if (!loading) set(box.Password); };
         Add(Row(key, box));
+    }
+
+    /// <summary>Where custom themes live, with a button that opens the folder in the file manager.</summary>
+    private void ThemeFolderRow()
+    {
+        Services.ThemeFiles.EnsureFolder();
+        var path = new TextBlock
+        {
+            Text = Services.ThemeFiles.Folder,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            MaxWidth = 220,
+            Opacity = 0.7,
+        };
+        var button = new Button { Content = Loc.Get("OpenFolder") };
+        button.Click += (_, _) =>
+        {
+            try
+            {
+                Services.ThemeFiles.EnsureFolder();
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Services.ThemeFiles.Folder) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                Services.Log.Error("open theme folder", ex);
+            }
+        };
+        Add(Row("ThemeFolder", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { path, button } }));
     }
 
     private void FolderRow(string key, Func<string?> get, Action<string?> set)
