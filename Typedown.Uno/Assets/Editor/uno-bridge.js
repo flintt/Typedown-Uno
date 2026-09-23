@@ -92,17 +92,20 @@
         findBar = document.createElement('div');
         findBar.id = 'uno-find-bar';
         findBar.style.cssText = 'position:fixed;top:8px;right:24px;z-index:100000;display:none;align-items:center;gap:6px;padding:6px 8px;border-radius:6px;' +
-            'background:rgba(128,128,128,0.16);backdrop-filter:blur(12px);border:1px solid rgba(128,128,128,0.3);font:13px system-ui,sans-serif;color:inherit;';
+            'background:var(--floatBgColor);border:1px solid var(--floatBorderColor);box-shadow:var(--floatShadow);' +
+            'font:13px system-ui,sans-serif;color:var(--editorColor);';
         findInput = document.createElement('input');
         findInput.type = 'text';
         findInput.placeholder = 'Find';
-        findInput.style.cssText = 'width:220px;padding:4px 6px;border:1px solid rgba(128,128,128,0.4);border-radius:4px;background:rgba(255,255,255,0.6);color:#222;outline:none;';
+        findInput.style.cssText = 'width:220px;padding:4px 6px;border:1px solid var(--floatBorderColor);border-radius:4px;' +
+            'background:var(--inputBgColor);color:var(--editorColor);outline:none;';
         findCount = document.createElement('span');
-        findCount.style.cssText = 'min-width:24px;opacity:0.8;color:#888;';
+        findCount.style.cssText = 'min-width:24px;color:var(--editorColor60);';
         function button(text, title, onClick) {
             var b = document.createElement('button');
             b.textContent = text; b.title = title;
-            b.style.cssText = 'padding:2px 8px;border:1px solid rgba(128,128,128,0.4);border-radius:4px;background:rgba(255,255,255,0.7);color:#222;cursor:pointer;';
+            b.style.cssText = 'padding:2px 8px;border:1px solid var(--floatBorderColor);border-radius:4px;' +
+                'background:var(--itemBgColor);color:var(--editorColor);cursor:pointer;';
             b.addEventListener('click', function (e) { e.preventDefault(); onClick(); });
             return b;
         }
@@ -178,8 +181,8 @@
             contextMenu = document.createElement('div');
             contextMenu.id = 'uno-context-menu';
             contextMenu.style.cssText = 'position:fixed;z-index:100001;display:none;min-width:150px;padding:4px;border-radius:6px;' +
-                'background:rgba(250,250,250,0.98);border:1px solid rgba(128,128,128,0.35);box-shadow:0 6px 18px rgba(0,0,0,0.18);' +
-                'font:13px system-ui,sans-serif;color:#222;user-select:none;';
+                'background:var(--floatBgColor);border:1px solid var(--floatBorderColor);box-shadow:var(--floatShadow);' +
+                'font:13px system-ui,sans-serif;color:var(--editorColor);user-select:none;';
             document.body.appendChild(contextMenu);
         }
         var readOnly = isReadOnly();
@@ -221,7 +224,7 @@
             if (item.hidden) return;
             if (item.separator) {
                 var line = document.createElement('div');
-                line.style.cssText = 'height:1px;margin:4px 6px;background:rgba(128,128,128,0.3);';
+                line.style.cssText = 'height:1px;margin:4px 6px;background:var(--floatBorderColor);';
                 contextMenu.appendChild(line);
                 return;
             }
@@ -229,7 +232,7 @@
             row.textContent = item.label;
             row.style.cssText = 'padding:6px 12px;border-radius:4px;cursor:' + (item.enabled ? 'pointer' : 'default') + ';opacity:' + (item.enabled ? '1' : '0.4') + ';';
             if (item.enabled) {
-                row.addEventListener('mouseenter', function () { row.style.background = 'rgba(128,128,128,0.18)'; });
+                row.addEventListener('mouseenter', function () { row.style.background = 'var(--floatHoverColor)'; });
                 row.addEventListener('mouseleave', function () { row.style.background = 'transparent'; });
                 row.addEventListener('mouseup', function (e) { e.preventDefault(); e.stopPropagation(); hideContextMenu(); item.run(); });
             }
@@ -271,8 +274,8 @@
             floatBox = document.createElement('div');
             floatBox.id = 'uno-float-tools';
             floatBox.style.cssText = 'position:fixed;z-index:100000;display:none;padding:3px;border-radius:6px;' +
-                'background:rgba(250,250,250,0.98);border:1px solid rgba(128,128,128,0.35);box-shadow:0 6px 18px rgba(0,0,0,0.18);' +
-                'font:13px system-ui,sans-serif;color:#222;user-select:none;white-space:nowrap;';
+                'background:var(--floatBgColor);border:1px solid var(--floatBorderColor);box-shadow:var(--floatShadow);' +
+                'font:13px system-ui,sans-serif;color:var(--editorColor);user-select:none;white-space:nowrap;';
             document.body.appendChild(floatBox);
         }
         floatBox.textContent = '';
@@ -295,8 +298,8 @@
         b.textContent = label;
         b.title = title || '';
         b.style.cssText = 'min-width:28px;height:26px;margin:0 1px;padding:0 6px;border:none;border-radius:4px;cursor:pointer;' +
-            'font:13px system-ui,sans-serif;background:' + (active ? 'rgba(0,120,212,0.18)' : 'transparent') + ';color:#222;';
-        b.addEventListener('mouseenter', function () { if (!active) b.style.background = 'rgba(128,128,128,0.18)'; });
+            'font:13px system-ui,sans-serif;background:' + (active ? 'var(--selectionColor)' : 'transparent') + ';color:var(--editorColor);';
+        b.addEventListener('mouseenter', function () { if (!active) b.style.background = 'var(--floatHoverColor)'; });
         b.addEventListener('mouseleave', function () { if (!active) b.style.background = 'transparent'; });
         b.addEventListener('mousedown', function (e) { e.preventDefault(); e.stopPropagation(); });
         b.addEventListener('mouseup', function (e) { e.preventDefault(); e.stopPropagation(); run(); });
@@ -355,7 +358,7 @@
             var row = document.createElement('div');
             row.textContent = item[0];
             row.style.cssText = 'padding:6px 12px;border-radius:4px;cursor:pointer;';
-            row.addEventListener('mouseenter', function () { row.style.background = 'rgba(128,128,128,0.18)'; });
+            row.addEventListener('mouseenter', function () { row.style.background = 'var(--floatHoverColor)'; });
             row.addEventListener('mouseleave', function () { row.style.background = 'transparent'; });
             row.addEventListener('mouseup', function (e) { e.preventDefault(); e.stopPropagation(); hideFloat(); local('FrontMenuClosed'); item[1](); });
             box.appendChild(row);
@@ -376,7 +379,7 @@
             var row = document.createElement('div');
             row.textContent = item[0];
             row.style.cssText = 'padding:6px 12px;border-radius:4px;cursor:pointer;';
-            row.addEventListener('mouseenter', function () { row.style.background = 'rgba(128,128,128,0.18)'; });
+            row.addEventListener('mouseenter', function () { row.style.background = 'var(--floatHoverColor)'; });
             row.addEventListener('mouseleave', function () { row.style.background = 'transparent'; });
             row.addEventListener('mouseup', function (e) {
                 e.preventDefault(); e.stopPropagation(); hideFloat();
@@ -396,7 +399,8 @@
             tipBox = document.createElement('div');
             tipBox.id = 'uno-tooltip';
             tipBox.style.cssText = 'position:fixed;z-index:100002;display:none;padding:3px 8px;border-radius:4px;' +
-                'background:rgba(40,40,40,0.92);color:#fff;font:12px system-ui,sans-serif;pointer-events:none;white-space:nowrap;';
+                'background:var(--floatBgColor);color:var(--editorColor);border:1px solid var(--floatBorderColor);box-shadow:var(--floatShadow);' +
+                'font:12px system-ui,sans-serif;pointer-events:none;white-space:nowrap;';
             document.body.appendChild(tipBox);
         }
         tipBox.textContent = menuStrings['tip_' + args.tooltip] || args.tooltip;

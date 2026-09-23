@@ -1425,7 +1425,16 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         OpenFolderButton.Content = Loc.Get("OpenFolder");
     }
 
-    private ElementTheme DialogTheme => settings.Theme == AppTheme.System ? ElementTheme.Default : IsDarkTheme ? ElementTheme.Dark : ElementTheme.Light;
+    /// <summary>
+    /// Dialogs follow the theme in force, custom ones included: a dark theme with the app set to light would
+    /// otherwise open a light settings dialog over a dark window.
+    /// </summary>
+    private ElementTheme DialogTheme => EffectiveTheme switch
+    {
+        AppTheme.System => IsDarkTheme ? ElementTheme.Dark : ElementTheme.Light,
+        AppTheme.Light => ElementTheme.Light,
+        _ => ElementTheme.Dark,
+    };
 
     private async Task ShowSettingsAsync()
     {
