@@ -62,6 +62,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         NativeWindow();
         if (window != null) window.Activated += (_, _) => PublishNativeChrome();
         ApplyStrings();
+        HookTabBarWheel();
         BuildMenus();
         ApplyTheme(post: false);
         ApplySidePane();
@@ -1762,6 +1763,13 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         e.Handled = true;
         _ = tabs.SwitchRelativeAsync(delta > 0 ? -1 : 1);
     }
+
+    /// <summary>
+    /// handledEventsToo: once there are more tabs than fit, the strip's own scroll viewer takes the wheel and
+    /// marks it handled, so a plain handler never sees it and the wheel only slid the strip sideways.
+    /// </summary>
+    private void HookTabBarWheel() =>
+        TabBar.AddHandler(UIElement.PointerWheelChangedEvent, new PointerEventHandler(OnTabBarWheel), true);
 
     /// <summary>
     /// The wheel over the tab strip moves between tabs rather than scrolling anything: up goes to the tab on

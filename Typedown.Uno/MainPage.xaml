@@ -109,7 +109,7 @@
           <RowDefinition Height="Auto"/>
           <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
-        <TabView x:Name="TabBar" Visibility="Collapsed" IsAddTabButtonVisible="True" PointerWheelChanged="OnTabBarWheel"
+        <TabView x:Name="TabBar" Visibility="Collapsed" IsAddTabButtonVisible="True"
                  AddTabButtonClick="OnAddTabClick" TabCloseRequested="OnTabCloseRequested" SelectionChanged="OnTabSelectionChanged">
           <TabView.TabItemTemplate>
             <DataTemplate x:DataType="vm:DocumentTab">
