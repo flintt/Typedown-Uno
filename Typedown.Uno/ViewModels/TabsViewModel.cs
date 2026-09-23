@@ -116,6 +116,17 @@ public sealed class TabsViewModel : INotifyPropertyChanged
         }
     }
 
+    /// <summary>
+    /// The tab at a position, counted from zero; a position past the last tab means the last one, which is what
+    /// the modifier+9 shortcut is for. Nothing happens when that tab is already the active one.
+    /// </summary>
+    public Task SwitchToIndexAsync(int index)
+    {
+        if (Tabs.Count == 0) return Task.CompletedTask;
+        var tab = index >= Tabs.Count ? Tabs[^1] : Tabs[Math.Max(index, 0)];
+        return tab == ActiveTab ? Task.CompletedTask : SwitchToAsync(tab);
+    }
+
     public Task SwitchRelativeAsync(int delta)
     {
         if (Tabs.Count < 2) return Task.CompletedTask;

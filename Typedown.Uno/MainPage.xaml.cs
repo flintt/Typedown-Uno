@@ -677,6 +677,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         foreach (var handler in menuToggleHandlers) settings.PropertyChanged -= handler;
         menuToggleHandlers.Clear();
         KeyboardAccelerators.Clear(); // rebuilt below from the current bindings
+        AddTabNumberAccelerators();
         commandActions.Clear();
         MainMenu.Items.Clear();
         var file = new MenuBarItem { Title = Loc.Get("File") };
@@ -872,6 +873,29 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         recentMenu.Items.Add(Item("ClearRecent", () => settings.RecentFiles = new()));
     }
 
+    /// <summary>
+    /// Alt+1..9 for the tabs. They are not bindings the user can change, so they are added straight to the
+    /// window rather than hung off a menu entry; the editor forwards the same keys when it has the focus.
+    /// </summary>
+    private void AddTabNumberAccelerators()
+    {
+        for (var n = 1; n <= 9; n++)
+        {
+            var index = n == 9 ? int.MaxValue : n - 1;
+            var accelerator = new KeyboardAccelerator
+            {
+                Key = (Windows.System.VirtualKey)((int)Windows.System.VirtualKey.Number0 + n),
+                Modifiers = Windows.System.VirtualKeyModifiers.Menu,
+            };
+            accelerator.Invoked += (sender, e) =>
+            {
+                e.Handled = true;
+                if (tabs != null) _ = tabs.SwitchToIndexAsync(index);
+            };
+            KeyboardAccelerators.Add(accelerator);
+        }
+    }
+
     private async Task HandleShortcutAsync(string key, bool ctrl, bool shift, bool alt = false)
     {
         if (tabs == null || document == null) return;
@@ -898,6 +922,11 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             case (",", true, false): await ShowSettingsAsync(); break;
             case ("tab", true, false): await tabs.SwitchRelativeAsync(1); break;
             case ("tab", true, true): await tabs.SwitchRelativeAsync(-1); break;
+            // Alt+1..9 picks a tab by position, 9 being the last one however many there are. Alt rather than
+            // Ctrl because Ctrl+1..6 sets the heading level in the Windows edition, as it does in MarkText.
+            case (_, false, false) when alt && key.Length == 1 && key[0] is >= '1' and <= '9':
+                await tabs.SwitchToIndexAsync(key[0] == '9' ? int.MaxValue : key[0] - '1');
+                break;
         }
     }
 
@@ -1436,10 +1465,35 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         _ => ElementTheme.Dark,
     };
 
+    /// <summary>The settings dialog, while it is up: the shortcut that opens it closes it again.</summary>
+    private SettingsDialog? settingsDialog;
+
     private async Task ShowSettingsAsync()
     {
+        if (settingsDialog != null)
+        {
+            settingsDialog.Hide();
+            settingsDialog = null;
+            return;
+        }
         var dialog = new SettingsDialog(settings) { XamlRoot = XamlRoot, RequestedTheme = DialogTheme };
-        await dialog.ShowAsync();
+        // A dialog takes the keyboard with it, so the shortcut has to be on the dialog as well for the second
+        // press to close what the first one opened.
+        if (settings.Shortcuts.Get(ShortcutCommand.Settings).ToAccelerator() is { } accelerator)
+        {
+            var close = new KeyboardAccelerator { Key = accelerator.key, Modifiers = accelerator.modifiers };
+            close.Invoked += (sender, e) => { e.Handled = true; dialog.Hide(); };
+            dialog.KeyboardAccelerators.Add(close);
+        }
+        settingsDialog = dialog;
+        try
+        {
+            await dialog.ShowAsync();
+        }
+        finally
+        {
+            if (settingsDialog == dialog) settingsDialog = null;
+        }
     }
 
     private async Task InsertTableAsync()
@@ -1640,10 +1694,34 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             if ((DateTime.UtcNow - lastXamlWheel).TotalMilliseconds < 400) return;
             var scale = XamlRoot?.RasterizationScale ?? 1;
             if (scale <= 0) scale = 1;
-            var scroller = ScrollerAt(new Windows.Foundation.Point(x / scale, y / scale));
+            var point = new Windows.Foundation.Point(x / scale, y / scale);
+            if (WheelOverTabs(point, notches)) return;
+            var scroller = ScrollerAt(point);
             // three lines per notch, the usual step for a ScrollViewer
             scroller?.ChangeView(null, scroller.VerticalOffset - notches * 48, null, true);
         });
+    }
+
+    private void OnTabBarWheel(object sender, PointerRoutedEventArgs e)
+    {
+        var delta = e.GetCurrentPoint(TabBar).Properties.MouseWheelDelta;
+        if (tabs == null || delta == 0) return;
+        e.Handled = true;
+        _ = tabs.SwitchRelativeAsync(delta > 0 ? -1 : 1);
+    }
+
+    /// <summary>
+    /// The wheel over the tab strip moves between tabs rather than scrolling anything: up goes to the tab on
+    /// the left, down to the one on the right. This is the fallback path for X11, where the wheel does not
+    /// reach XAML at all (see <see cref="OnNativeWheel"/>); <see cref="OnTabBarWheel"/> is the same thing for
+    /// the platforms where it does.
+    /// </summary>
+    private bool WheelOverTabs(Windows.Foundation.Point point, int notches)
+    {
+        if (tabs == null || TabBar.Visibility != Visibility.Visible || notches == 0) return false;
+        if (XamlRoot?.Content is not UIElement reference || !Contains(TabBar, point, reference)) return false;
+        _ = tabs.SwitchRelativeAsync(notches > 0 ? -1 : 1);
+        return true;
     }
 
     /// <summary>
