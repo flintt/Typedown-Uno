@@ -651,6 +651,18 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
 
     private readonly List<System.ComponentModel.PropertyChangedEventHandler> menuToggleHandlers = new();
 
+    /// <summary>The theme entries of the View menu, so the tick can move without rebuilding the menu.</summary>
+    private readonly List<(RadioMenuFlyoutItem Item, string? CustomId, AppTheme? BuiltIn)> themeMenuItems = new();
+
+    private void UpdateThemeChecks()
+    {
+        var custom = settings.CustomTheme;
+        foreach (var (item, id, builtIn) in themeMenuItems)
+            item.IsChecked = id != null
+                ? id == custom
+                : string.IsNullOrEmpty(custom) && builtIn == settings.Theme;
+    }
+
     /// <summary>Drops every subscription this page holds on the shared settings.</summary>
     private void DetachFromSettings()
     {
@@ -768,12 +780,13 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         view.Items.Add(new MenuFlyoutSeparator());
         view.Items.Add(Toggle("SidePane", () => settings.SidePaneOpen, v => settings.SidePaneOpen = v, ShortcutCommand.SidePane));
         var theme = new MenuFlyoutSubItem { Text = Loc.Get("Theme") };
-        var usingCustom = !string.IsNullOrEmpty(settings.CustomTheme);
+        themeMenuItems.Clear();
         foreach (var t in Enum.GetValues<AppTheme>())
         {
             var value = t;
-            var item = new RadioMenuFlyoutItem { Text = Loc.Get("Theme" + t), IsChecked = !usingCustom && settings.Theme == t, GroupName = "theme" };
+            var item = new RadioMenuFlyoutItem { Text = Loc.Get("Theme" + t), GroupName = "theme" };
             item.Click += (_, _) => { settings.CustomTheme = ""; settings.Theme = value; };
+            themeMenuItems.Add((item, null, value));
             theme.Items.Add(item);
         }
         // Themes from the themes folder, in the same group as the built-in ones (see docs/custom-theme.md).
@@ -784,17 +797,20 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             foreach (var custom in customThemes)
             {
                 var id = custom.Id;
-                var item = new RadioMenuFlyoutItem { Text = custom.Name, IsChecked = settings.CustomTheme == id, GroupName = "theme" };
+                var item = new RadioMenuFlyoutItem { Text = custom.Name, GroupName = "theme" };
                 item.Click += (_, _) => settings.CustomTheme = id;
+                themeMenuItems.Add((item, id, null));
                 theme.Items.Add(item);
             }
         }
         theme.Items.Add(new MenuFlyoutSeparator());
-        // Picks up a theme that was just added or edited, without restarting.
+        // Picks up a theme that was just added or edited, without restarting. Rebuilding the menus has to wait
+        // until this click is over: the menu would otherwise be torn down while it is still on screen.
         var reload = new MenuFlyoutItem { Text = Loc.Get("ReloadThemes") };
-        reload.Click += (_, _) => { BuildMenus(); ApplyTheme(post: true); };
+        reload.Click += (_, _) => DispatcherQueue.TryEnqueue(() => { BuildMenus(); ApplyTheme(post: true); });
         theme.Items.Add(reload);
         view.Items.Add(theme);
+        UpdateThemeChecks();
         MainMenu.Items.Add(view);
 
         var help = new MenuBarItem { Title = Loc.Get("Help") };
@@ -1277,8 +1293,11 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     {
         var background = Brush(theme?.Background);
         var surface = Brush(theme?.Surface) ?? background;
-        var foreground = Brush(theme?.Foreground);
         var border = Brush(theme?.Border);
+        // A theme may paint the panels and say nothing about text. The built-in theme's text colour is then the
+        // one in force, and a light panel under a dark theme (or the other way round) leaves it unreadable — so
+        // the text colour follows the panel it sits on when the theme does not name one.
+        var foreground = Brush(theme?.Foreground) ?? Readable(theme?.Surface ?? theme?.Background);
 
         Set(this, background, ApplyTo.Background);
         Set(SidePane, surface, ApplyTo.Background);
@@ -1311,6 +1330,16 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         if (property == null) return;
         if (brush == null) element.ClearValue(property);
         else element.SetValue(property, brush);
+    }
+
+    /// <summary>Black or white, whichever can be read on the given colour; null when there is no colour.</summary>
+    private static Brush? Readable(string? colour)
+    {
+        var rgb = ParseAccent(colour);
+        if (rgb == null) return null;
+        var luminance = (0.299 * rgb.Value.Item1 + 0.587 * rgb.Value.Item2 + 0.114 * rgb.Value.Item3) / 255;
+        var tone = luminance > 0.55 ? (byte)26 : (byte)240;
+        return new SolidColorBrush(Windows.UI.Color.FromArgb(255, tone, tone, tone));
     }
 
     private static Brush? Brush(string? colour)
@@ -1364,7 +1393,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             switch (name)
             {
                 case nameof(AppSettings.Theme):
-                case nameof(AppSettings.CustomTheme): ApplyTheme(post: true); BuildMenus(); break;
+                case nameof(AppSettings.CustomTheme): ApplyTheme(post: true); UpdateThemeChecks(); break;
                 case nameof(AppSettings.SidePaneOpen) or nameof(AppSettings.SidePanePage) or nameof(AppSettings.SidePaneWidth):
                     ApplySidePane();
                     if (settings.SidePaneOpen && settings.SidePanePage == 1) RefreshOutline();
