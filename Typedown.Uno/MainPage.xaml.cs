@@ -612,8 +612,26 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
 
         var view = new MenuBarItem { Title = Loc.Get("View") };
         view.Items.Add(Toggle("SourceCode", () => settings.SourceCode, v => settings.SourceCode = v, ShortcutCommand.SourceCode));
-        view.Items.Add(Toggle("FocusMode", () => settings.FocusMode, v => settings.FocusMode = v));
-        view.Items.Add(Toggle("Typewriter", () => settings.Typewriter, v => settings.Typewriter = v));
+        // Focus and typewriter mode both follow the caret, so they mean nothing in reading mode (no caret) or in
+        // source mode (a plain text editor): grey them out rather than let them look enabled and do nothing.
+        var focusItem = Toggle("FocusMode", () => settings.FocusMode, v => settings.FocusMode = v);
+        var typewriterItem = Toggle("Typewriter", () => settings.Typewriter, v => settings.Typewriter = v);
+        void UpdateModeAvailability()
+        {
+            var caretModes = !settings.ReadOnly && !settings.SourceCode;
+            focusItem.IsEnabled = caretModes;
+            typewriterItem.IsEnabled = caretModes;
+        }
+        UpdateModeAvailability();
+        void OnModeChanged(object? _, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName is nameof(AppSettings.ReadOnly) or nameof(AppSettings.SourceCode))
+                DispatcherQueue.TryEnqueue(UpdateModeAvailability);
+        }
+        settings.PropertyChanged += OnModeChanged;
+        menuToggleHandlers.Add(OnModeChanged);
+        view.Items.Add(focusItem);
+        view.Items.Add(typewriterItem);
         view.Items.Add(Toggle("ReadOnly", () => settings.ReadOnly, v => settings.ReadOnly = v, ShortcutCommand.ReadingMode));
         view.Items.Add(new MenuFlyoutSeparator());
         view.Items.Add(Toggle("SidePane", () => settings.SidePaneOpen, v => settings.SidePaneOpen = v, ShortcutCommand.SidePane));
