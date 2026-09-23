@@ -1388,7 +1388,6 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     }
 
     private DateTime lastXamlWheel;
-    private bool wheelFallbackNeeded = true;
 
     /// <summary>
     /// Scrolling with the wheel over the shell (the file tree, the outline, a dialog) does nothing in a VNC
@@ -1399,24 +1398,21 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     /// </summary>
     private void HookWheelFallback()
     {
-        AddHandler(UIElement.PointerWheelChangedEvent, new PointerEventHandler((_, _) =>
-        {
-            lastXamlWheel = DateTime.UtcNow;
-            wheelFallbackNeeded = false;
-        }), true);
+        AddHandler(UIElement.PointerWheelChangedEvent, new PointerEventHandler((_, _) => lastXamlWheel = DateTime.UtcNow), true);
         Services.X11Window.WheelScrolled += OnNativeWheel;
         Unloaded += (_, _) => Services.X11Window.WheelScrolled -= OnNativeWheel;
-        Services.X11Window.ListenForWheel(NativeWindow());
     }
 
     private void OnNativeWheel(IntPtr source, int x, int y, int notches)
     {
-        if (!wheelFallbackNeeded || source != nativeWindow) return;
+        if (source != nativeWindow) return;
         DispatcherQueue.TryEnqueue(async () =>
         {
-            // give Uno's own wheel handling a moment; if it fires, this fallback stays out of the way for good
+            // Give Uno's own wheel handling a moment: when it delivers the notch (a mouse with a scroll axis)
+            // this fallback stays out of the way. The suppression is per notch rather than permanent, so one
+            // stray wheel event cannot switch the fallback off for the rest of the session.
             await Task.Delay(60);
-            if (!wheelFallbackNeeded || (DateTime.UtcNow - lastXamlWheel).TotalMilliseconds < 500) return;
+            if ((DateTime.UtcNow - lastXamlWheel).TotalMilliseconds < 400) return;
             var scale = XamlRoot?.RasterizationScale ?? 1;
             if (scale <= 0) scale = 1;
             var scroller = ScrollerAt(new Windows.Foundation.Point(x / scale, y / scale));
@@ -1452,6 +1448,10 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         void Walk(DependencyObject node, int depth)
         {
             if (depth > 32) return;
+            // A hidden branch keeps its layout: the file tree and the outline sit on top of each other and only
+            // one is visible, so without this the hidden one's scroll viewer could win the hit test and the
+            // wheel would appear to do nothing.
+            if (node is UIElement { Visibility: Visibility.Collapsed }) return;
             if (node is ScrollViewer { ScrollableHeight: > 0 } scroller && depth > bestDepth && Contains(scroller, point, reference))
             {
                 best = scroller;
@@ -1484,6 +1484,8 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         var handle = NativeWindow();
         if (handle == IntPtr.Zero) return;
         Services.X11Window.SetTitle(handle, document?.Title ?? "Typedown");
+        // The handle can arrive late, so the wheel listener is started here rather than once at load time.
+        Services.X11Window.ListenForWheel(handle);
         if (nativeIconApplied) return;
         nativeIconApplied = true;
         Services.X11Window.SetIcon(handle, Path.Combine(AppContext.BaseDirectory, "Assets", "typedown.png"));
