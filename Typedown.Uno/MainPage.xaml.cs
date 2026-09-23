@@ -111,6 +111,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         UpdateTabBar();
         HookWindowClosing();
         PublishNativeChrome();
+        HookWheelFallback();
 
         await StartEditorAsync();
     }
@@ -1384,6 +1385,97 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     {
         if (nativeWindow == IntPtr.Zero) nativeWindow = Services.X11Window.FindByTitle(options.Marker);
         return nativeWindow;
+    }
+
+    private DateTime lastXamlWheel;
+    private bool wheelFallbackNeeded = true;
+
+    /// <summary>
+    /// Scrolling with the wheel over the shell (the file tree, the outline, a dialog) does nothing in a VNC
+    /// session: Uno reads the wheel from XInput2 scroll valuators, which a pointer driven through XTEST does
+    /// not have. <see cref="Services.X11Window.ListenForWheel"/> reports the legacy wheel buttons instead, and
+    /// what arrives here is applied to the scroll viewer under the pointer — but only while Uno itself is not
+    /// delivering wheel events, so a normal mouse keeps its own (smooth) scrolling and never scrolls twice.
+    /// </summary>
+    private void HookWheelFallback()
+    {
+        AddHandler(UIElement.PointerWheelChangedEvent, new PointerEventHandler((_, _) =>
+        {
+            lastXamlWheel = DateTime.UtcNow;
+            wheelFallbackNeeded = false;
+        }), true);
+        Services.X11Window.WheelScrolled += OnNativeWheel;
+        Unloaded += (_, _) => Services.X11Window.WheelScrolled -= OnNativeWheel;
+        Services.X11Window.ListenForWheel(NativeWindow());
+    }
+
+    private void OnNativeWheel(IntPtr source, int x, int y, int notches)
+    {
+        if (!wheelFallbackNeeded || source != nativeWindow) return;
+        DispatcherQueue.TryEnqueue(async () =>
+        {
+            // give Uno's own wheel handling a moment; if it fires, this fallback stays out of the way for good
+            await Task.Delay(60);
+            if (!wheelFallbackNeeded || (DateTime.UtcNow - lastXamlWheel).TotalMilliseconds < 500) return;
+            var scale = XamlRoot?.RasterizationScale ?? 1;
+            if (scale <= 0) scale = 1;
+            var scroller = ScrollerAt(new Windows.Foundation.Point(x / scale, y / scale));
+            // three lines per notch, the usual step for a ScrollViewer
+            scroller?.ChangeView(null, scroller.VerticalOffset - notches * 48, null, true);
+        });
+    }
+
+    /// <summary>
+    /// The innermost scrollable ScrollViewer under a point. Hit testing through FindElementsInHostCoordinates
+    /// comes back empty here, so the visual tree is walked instead and each scroll viewer's bounds are mapped
+    /// into window coordinates. Open dialogs and flyouts live in their own popups and are checked first.
+    /// </summary>
+    private ScrollViewer? ScrollerAt(Windows.Foundation.Point point)
+    {
+        if (XamlRoot?.Content is not UIElement reference) return null;
+        var roots = new List<DependencyObject>();
+        foreach (var popup in Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot))
+            if (popup.Child != null) roots.Add(popup.Child);
+        roots.Add(this);
+        foreach (var root in roots)
+        {
+            var found = DeepestScroller(root, point, reference);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private static ScrollViewer? DeepestScroller(DependencyObject root, Windows.Foundation.Point point, UIElement reference)
+    {
+        ScrollViewer? best = null;
+        var bestDepth = -1;
+        void Walk(DependencyObject node, int depth)
+        {
+            if (depth > 32) return;
+            if (node is ScrollViewer { ScrollableHeight: > 0 } scroller && depth > bestDepth && Contains(scroller, point, reference))
+            {
+                best = scroller;
+                bestDepth = depth;
+            }
+            var count = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(node);
+            for (var i = 0; i < count; i++) Walk(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(node, i), depth + 1);
+        }
+        Walk(root, 0);
+        return best;
+    }
+
+    private static bool Contains(FrameworkElement element, Windows.Foundation.Point point, UIElement reference)
+    {
+        try
+        {
+            var origin = element.TransformToVisual(reference).TransformPoint(new Windows.Foundation.Point(0, 0));
+            return point.X >= origin.X && point.X <= origin.X + element.ActualWidth
+                && point.Y >= origin.Y && point.Y <= origin.Y + element.ActualHeight;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     /// <summary>Publishes the UTF-8 title and, once, the app icon on this window.</summary>

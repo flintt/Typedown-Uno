@@ -93,6 +93,21 @@ public static class X11Window
         }
     }
 
+    private static string ReadTextOn(IntPtr connection, IntPtr candidate, string property)
+    {
+        if (XGetWindowProperty(connection, candidate, XInternAtom(connection, property, false), IntPtr.Zero, (IntPtr)64, false, IntPtr.Zero,
+                out _, out _, out var items, out _, out var data) != 0 || data == IntPtr.Zero)
+            return "";
+        try
+        {
+            return Marshal.PtrToStringUTF8(data, (int)items) ?? "";
+        }
+        finally
+        {
+            XFree(data);
+        }
+    }
+
     private static string ReadText(IntPtr candidate, string property)
     {
         if (XGetWindowProperty(display, candidate, XInternAtom(display, property, false), IntPtr.Zero, (IntPtr)256, false, IntPtr.Zero,
@@ -192,6 +207,133 @@ public static class X11Window
         finally
         {
             XFree(data);
+        }
+    }
+
+    // ---- mouse wheel ---------------------------------------------------------------------------------------
+    // Uno's X11 backend reads scrolling from XInput2 scroll valuators, which only devices with a real scroll
+    // axis have. A VNC session (and anything else driven through XTEST) has a pointer with buttons and nothing
+    // else, so the wheel arrives as the legacy buttons 4-7 and the XAML layer never scrolls — the editor still
+    // does, because the web view is a native GTK window that reads those buttons itself. Listening for them on
+    // a connection of our own costs nothing and fixes the side pane; XInput2 lets several clients select the
+    // same events, so Uno keeps receiving everything it did before.
+
+    private const string LibXi = "libXi.so.6";
+    private const int GenericEvent = 35;
+    private const int XI_ButtonPress = 4;
+    private const int XIAllMasterDevices = 1;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct XIEventMask
+    {
+        public int deviceid;
+        public int mask_len;
+        public IntPtr mask;
+    }
+
+    [DllImport(LibX11)] private static extern int XQueryExtension(IntPtr display, string name, out int opcode, out int firstEvent, out int firstError);
+    [DllImport(LibX11)] private static extern int XNextEvent(IntPtr display, byte[] eventData);
+    [DllImport(LibX11)] private static extern bool XGetEventData(IntPtr display, byte[] cookie);
+    [DllImport(LibX11)] private static extern void XFreeEventData(IntPtr display, byte[] cookie);
+    [DllImport(LibXi)] private static extern int XIQueryVersion(IntPtr display, ref int major, ref int minor);
+    [DllImport(LibXi)] private static extern int XISelectEvents(IntPtr display, IntPtr window, ref XIEventMask masks, int numMasks);
+
+    /// <summary>A wheel notch: the window it happened on, the position in its pixels, and the notch count (up is positive).</summary>
+    public static event Action<IntPtr, int, int, int>? WheelScrolled;
+
+    private static readonly HashSet<IntPtr> wheelWindows = new();
+
+    /// <summary>
+    /// Starts the fallback wheel listener for <paramref name="window"/>; one per window, each on its own
+    /// connection because the loop blocks. Safe to call more than once.
+    /// </summary>
+    public static void ListenForWheel(IntPtr window)
+    {
+        if (!OperatingSystem.IsLinux() || window == IntPtr.Zero) return;
+        lock (wheelWindows)
+        {
+            if (!wheelWindows.Add(window)) return;
+        }
+        var thread = new Thread(() => WheelLoop(window)) { IsBackground = true, Name = "x11-wheel" };
+        thread.Start();
+    }
+
+    private static void WheelLoop(IntPtr window)
+    {
+        // a connection of its own: the display used for titles and icons is touched from the UI thread
+        var connection = XOpenDisplay(IntPtr.Zero);
+        if (connection == IntPtr.Zero) return;
+        try
+        {
+            if (XQueryExtension(connection, "XInputExtension", out var opcode, out _, out _) == 0) return;
+            int major = 2, minor = 2;
+            if (XIQueryVersion(connection, ref major, ref minor) != 0 /* Success */) return;
+
+            var mask = Marshal.AllocHGlobal(4);
+            try
+            {
+                for (var i = 0; i < 4; i++) Marshal.WriteByte(mask, i, 0);
+                Marshal.WriteByte(mask, XI_ButtonPress >> 3, (byte)(1 << (XI_ButtonPress & 7)));
+                var events = new XIEventMask { deviceid = XIAllMasterDevices, mask_len = 4, mask = mask };
+                // Uno draws into a child window of the top-level one and selects the same events there, which
+                // stops them propagating up, so the selection covers the children as well. The web view's own
+                // window is left alone: WebKit already handles the wheel inside the document.
+                void SelectOn(IntPtr target, int depth)
+                {
+                    XISelectEvents(connection, target, ref events, 1);
+                    if (depth > 2) return;
+                    if (XQueryTree(connection, target, out _, out _, out var children, out var count) == 0 || children == IntPtr.Zero) return;
+                    try
+                    {
+                        for (var i = 0; i < count; i++)
+                        {
+                            var child = Marshal.ReadIntPtr(children, i * IntPtr.Size);
+                            if (ReadTextOn(connection, child, "WM_NAME").StartsWith("Uno WebView", StringComparison.Ordinal)) continue;
+                            SelectOn(child, depth + 1);
+                        }
+                    }
+                    finally
+                    {
+                        XFree(children);
+                    }
+                }
+                SelectOn(window, 0);
+                XFlush(connection);
+
+                var buffer = new byte[256]; // an XEvent is 192 bytes
+                while (true)
+                {
+                    XNextEvent(connection, buffer);
+                    if (BitConverter.ToInt32(buffer, 0) != GenericEvent) continue;
+                    if (BitConverter.ToInt32(buffer, 32) != opcode) continue;
+                    if (BitConverter.ToInt32(buffer, 36) != XI_ButtonPress) continue;
+                    if (!XGetEventData(connection, buffer)) continue;
+                    try
+                    {
+                        var data = Marshal.ReadIntPtr(buffer, 48);
+                        if (data == IntPtr.Zero) continue;
+                        // XIDeviceEvent: detail at 56, event_x/event_y (doubles) at 104/112
+                        var button = Marshal.ReadInt32(data, 56);
+                        var notches = button switch { 4 => 1, 5 => -1, _ => 0 };
+                        if (notches == 0) continue;
+                        var x = (int)BitConverter.Int64BitsToDouble(Marshal.ReadInt64(data, 104));
+                        var y = (int)BitConverter.Int64BitsToDouble(Marshal.ReadInt64(data, 112));
+                        WheelScrolled?.Invoke(window, x, y, notches);
+                    }
+                    finally
+                    {
+                        XFreeEventData(connection, buffer);
+                    }
+                }
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(mask);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("wheel listener", ex);
         }
     }
 

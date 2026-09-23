@@ -57,7 +57,7 @@
             </Button>
           </NavigationView.PaneFooter>
 
-          <Grid>
+          <Grid x:Name="SidePaneContent">
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto"/>
               <RowDefinition Height="*"/>
