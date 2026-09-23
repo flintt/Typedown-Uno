@@ -69,7 +69,12 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         transport = new EditorTransport(PostToEditor);
         document = new DocumentViewModel(transport, this, settings);
         tabs = new TabsViewModel(document, settings);
-        document.PropertyChanged += (_, _) => DispatcherQueue.TryEnqueue(UpdateTitle);
+        document.PropertyChanged += (_, e) => DispatcherQueue.TryEnqueue(() =>
+        {
+            UpdateTitle();
+            // Switching tabs restores a document rather than opening one, so the tree hears about it here.
+            if (e.PropertyName == nameof(DocumentViewModel.FilePath)) FollowDocumentFolder(document.FilePath);
+        });
         document.RunOnUi += work => DispatcherQueue.TryEnqueue(async () => await work());
         document.FileOpened += path => DispatcherQueue.TryEnqueue(() => OnFileOpened(path));
         tabs.TabsChanged += () => DispatcherQueue.TryEnqueue(UpdateTabBar);
@@ -1030,8 +1035,20 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     {
         settings.AddRecent(path);
         FillRecent();
-        var dir = Path.GetDirectoryName(path)!;
-        if (workFolder == null || (!folderIsExplicit && !dir.StartsWith(workFolder, StringComparison.OrdinalIgnoreCase)))
+        FollowDocumentFolder(path);
+    }
+
+    /// <summary>
+    /// The file tree follows the document in front of you — switching to a tab from another folder moves the
+    /// tree there too, which opening a file has always done. A folder opened on purpose stays put: that is a
+    /// workspace the tabs move around in, not a place the tree should be dragged away from.
+    /// </summary>
+    private void FollowDocumentFolder(string? path)
+    {
+        if (string.IsNullOrEmpty(path) || folderIsExplicit) return;
+        var dir = Path.GetDirectoryName(path);
+        if (string.IsNullOrEmpty(dir)) return;
+        if (workFolder == null || !dir.StartsWith(workFolder, StringComparison.OrdinalIgnoreCase))
             SetWorkFolder(dir);
     }
 
