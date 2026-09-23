@@ -75,8 +75,41 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        var file = Environment.GetCommandLineArgs().Skip(1).FirstOrDefault(a => !a.StartsWith('-') && System.IO.File.Exists(a));
-        CreateWindow(file, restoreSession: file == null);
+        var files = Environment.GetCommandLineArgs().Skip(1)
+            .Where(a => !a.StartsWith('-') && System.IO.File.Exists(a))
+            .ToList();
+        // Opening a document from the file manager starts the program again. If one is already running it takes
+        // the file and this process is done; otherwise this one becomes the instance that serves.
+        if (Services.SingleInstance.HandOff(files))
+        {
+            Environment.Exit(0);
+            return;
+        }
+        Services.SingleInstance.FilesRequested += OnFilesFromAnotherLaunch;
+        Services.SingleInstance.Listen();
+        CreateWindow(files.FirstOrDefault(), restoreSession: files.Count == 0);
+    }
+
+    /// <summary>
+    /// Another launch handed us its arguments. With "open files in a tab" the file joins the window that is
+    /// already open, which is the whole point of the setting; without it, it gets a window of its own. A launch
+    /// with no file at all just brings the existing window forward.
+    /// </summary>
+    private static void OnFilesFromAnotherLaunch(IReadOnlyList<string> files)
+    {
+        var window = windows.LastOrDefault() ?? MainWindow;
+        window?.DispatcherQueue.TryEnqueue(async () =>
+        {
+            var page = (window.Content as Frame)?.Content as MainPage;
+            foreach (var file in files)
+            {
+                if (page != null && Services.AppSettings.Current.OpenFilesInNewTab)
+                    await page.OpenExternalFileAsync(file);
+                else
+                    CreateWindow(file);
+            }
+            window.Activate();
+        });
     }
 
     /// <summary>

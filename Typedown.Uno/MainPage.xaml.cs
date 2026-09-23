@@ -475,6 +475,20 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     // ---- images and drops ---------------------------------------------------------------------------------------
 
     /// <summary>Documents are opened as tabs; images are stored next to the document and linked.</summary>
+    /// <summary>Opens a file handed over by another launch of the program (see <see cref="Services.SingleInstance"/>).</summary>
+    public async Task OpenExternalFileAsync(string path)
+    {
+        if (tabs == null || !File.Exists(path)) return;
+        try
+        {
+            await tabs.OpenFileAsync(path);
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Error("open handed-over file", ex);
+        }
+    }
+
     private async Task OpenDroppedAsync(IReadOnlyList<string> paths)
     {
         if (tabs == null || document == null) return;
