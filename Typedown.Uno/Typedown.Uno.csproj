@@ -12,6 +12,13 @@
     <!-- Versions -->
     <ApplicationDisplayVersion>1.1.0</ApplicationDisplayVersion>
     <ApplicationVersion>2</ApplicationVersion>
+    <!-- Same number in the assembly, so the About box and the log can report it. CI adds the commit
+         through SourceRevisionId, which .NET appends to the informational version. -->
+    <Version>$(ApplicationDisplayVersion)</Version>
+    <!-- The Uno SDK leaves these off in Debug, which makes the About box report 0.0.0 while developing. -->
+    <GenerateAssemblyVersionAttribute>true</GenerateAssemblyVersionAttribute>
+    <GenerateAssemblyFileVersionAttribute>true</GenerateAssemblyFileVersionAttribute>
+    <GenerateAssemblyInformationalVersionAttribute>true</GenerateAssemblyInformationalVersionAttribute>
     <!-- Package Publisher -->
     <ApplicationPublisher>Typedown.Uno</ApplicationPublisher>
     <!-- Package Description -->

@@ -1,0 +1,129 @@
+name: "Bug 反馈 / Bug report"
+description: "程序崩溃、显示错误、功能不正常 / Crash, wrong behaviour, broken feature"
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > **本仓库的 issue 由 AI（Claude Code）负责分析和修复，维护者只做验收。**
+        > AI 看不到你的屏幕，只能依据你写的内容和日志来定位问题，所以请尽量写清楚：
+        > 完整的版本信息（关于对话框里的"复制信息"按钮可一键复制）、复现步骤（按什么、点哪里、顺序）、
+        > 实际结果与期望结果、`debug.log` 和触发问题的 Markdown 片段。
+        > 这是跨平台版本，**桌面环境和显示协议（X11 / Wayland）经常是问题根源**，请务必填写。
+        > 描述越具体，修复越快；含糊的描述通常会被追问一轮。
+        >
+        > **Issues in this repository are triaged and fixed by an AI (Claude Code); the maintainer only reviews.**
+        > It cannot see your screen, so the full version block (the About dialog has a "Copy details" button),
+        > exact steps, actual vs. expected results, `debug.log` and a minimal Markdown sample are what make a fix
+        > possible. This is the cross-platform build: the desktop environment and display protocol (X11/Wayland)
+        > are often the cause, so please fill them in. Vague reports get a round of follow-up questions.
+
+  - type: textarea
+    id: versions
+    attributes:
+      label: "版本信息 / Version details"
+      description: |
+        打开 **帮助 → 关于**，点 **复制信息**，直接粘贴到这里。里面包含 Typedown、编辑内核、Uno Platform、
+        SkiaSharp、.NET、网页引擎（WebKitGTK / WebView2）、系统和桌面会话的版本。
+        Open **Help → About**, press **Copy details** and paste the block here. It carries the Typedown, editor
+        engine, Uno Platform, SkiaSharp, .NET, web engine (WebKitGTK / WebView2), OS and desktop session versions.
+      placeholder: |
+        Typedown: 1.1.0 (7e4ee50)
+        编辑内核: Muya (MarkText) · main.a13cf4a5.js
+        Uno Platform: 6.7.135
+        SkiaSharp: 3.119.2
+        .NET: .NET 9.0.20
+        网页引擎: WebKitGTK 2.52.6
+        系统: Ubuntu 24.04.4 LTS · X64
+        桌面会话: GNOME · wayland · DISPLAY=:0 · GDK_BACKEND=x11
+      render: text
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: "安装方式 / Install type"
+      options:
+        - ".deb (Debian/Ubuntu)"
+        - "AppImage"
+        - "Linux tar.gz (便携版 / portable)"
+        - "Windows zip"
+        - "macOS tar.gz"
+        - "源码构建 / Built from source"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: arch
+    attributes:
+      label: "CPU 架构 / Architecture"
+      options:
+        - "x64"
+        - "ARM64 (Apple Silicon)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: "发生了什么 / What happened"
+      description: "实际现象，和你期望的行为 / What you saw, and what you expected instead"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: "复现步骤 / Steps to reproduce"
+      placeholder: |
+        1. 打开文件夹 …
+        2. 单击文件树里的 …
+        3. 按 Ctrl+Shift+R …
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: "复现频率 / How often"
+      options:
+        - "每次 / Always"
+        - "经常 / Often"
+        - "偶尔 / Sometimes"
+        - "只出现过一次 / Once"
+
+  - type: textarea
+    id: sample
+    attributes:
+      label: "触发问题的 Markdown（如相关）/ Markdown that triggers it (if relevant)"
+      description: "表格、列表、公式、脚注等内容相关问题请贴出最小片段 / A minimal snippet for table/list/math/footnote issues"
+      render: markdown
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: "日志 / Logs"
+      description: |
+        日志文件：`~/.local/share/Typedown.Uno/debug.log`（Windows：`%LOCALAPPDATA%\Typedown.Uno\debug.log`，
+        macOS：`~/Library/Application Support/Typedown.Uno/debug.log`）。
+        编辑区空白、窗口起不来这类问题，日志开头的启动信息最关键，请整段贴上。
+        Paste the relevant part of `debug.log` (paths above). For a blank editor area or a window that never
+        appears, the startup block at the top of the log is the important part.
+      render: text
+
+  - type: textarea
+    id: media
+    attributes:
+      label: "截图 / 录屏 / Screenshots"
+      description: "直接拖进来即可 / Drag files here"
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: "确认 / Checklist"
+      options:
+        - label: "已经在最新的 Release 上试过 / Reproduced on the latest release"
+        - label: "搜索过已有 issue，没有重复 / Searched existing issues"
+        - label: "这是 Uno（Linux/macOS/跨平台）版本的问题，不是 Windows 原生版的 / This is about the Uno build, not the Windows edition"

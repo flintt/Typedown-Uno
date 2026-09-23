@@ -62,6 +62,8 @@ public static class Loc
         ["Shared"] = "已分享到 HedgeDoc", ["ReadOnlyLink"] = "只读链接", ["EditLink"] = "可编辑链接", ["CopyLink"] = "复制链接", ["OpenInBrowser"] = "在浏览器打开",
         ["NotConfigured"] = "请先在设置里填写 HedgeDoc 服务器地址。", ["EditableWarning"] = "拿到此链接的人都可以编辑这篇笔记。",
         ["Exported"] = "已导出：{0}", ["AboutText"] = "Typedown（Uno Platform 版）\n跨平台 Markdown 编辑器，编辑内核来自 MarkText/Muya。",
+        ["AboutEditor"] = "编辑内核", ["AboutWebEngine"] = "网页引擎", ["AboutSystem"] = "系统", ["AboutSession"] = "桌面会话",
+        ["CopyInfo"] = "复制信息", ["Copied"] = "已复制", ["AboutIssue"] = "反馈问题时请附上以上信息。",
     };
 
     private static readonly Dictionary<string, string> En = new()
@@ -121,6 +123,8 @@ public static class Loc
         ["Shared"] = "Shared to HedgeDoc", ["ReadOnlyLink"] = "Read-only link", ["EditLink"] = "Editable link", ["CopyLink"] = "Copy link", ["OpenInBrowser"] = "Open in browser",
         ["NotConfigured"] = "Set the HedgeDoc server address in Settings first.", ["EditableWarning"] = "Anyone with this link can edit the note.",
         ["Exported"] = "Exported: {0}", ["AboutText"] = "Typedown (Uno Platform edition)\nCross-platform Markdown editor; editing engine from MarkText/Muya.",
+        ["AboutEditor"] = "Editor engine", ["AboutWebEngine"] = "Web engine", ["AboutSystem"] = "System", ["AboutSession"] = "Desktop session",
+        ["CopyInfo"] = "Copy details", ["Copied"] = "Copied", ["AboutIssue"] = "Please include these details in a bug report.",
     };
 
     public static string Language { get; private set; } = "en";

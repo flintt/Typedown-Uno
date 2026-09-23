@@ -43,6 +43,8 @@ public static class Log
               $"base={AppContext.BaseDirectory} cwd={Environment.CurrentDirectory} " +
               $"display={Environment.GetEnvironmentVariable("DISPLAY")} wayland={Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")} " +
               $"gdk={Environment.GetEnvironmentVariable("GDK_BACKEND")}");
+        // the same block the About box shows: an issue report usually arrives with the log attached
+        foreach (var (label, value) in AppInfo.Lines()) Write($"  {label}: {value}");
         var missing = MissingLinuxLibraries();
         if (missing.Count > 0)
             Write($"missing unversioned libraries (the GTK web view P/Invokes these names; run install-linux.sh or install the -dev packages): {string.Join(", ", missing)}");

@@ -38,28 +38,32 @@ public static class X11Window
         return display != IntPtr.Zero;
     }
 
+    /// <summary>Windows already handed to a page, so a second window does not claim the first one's handle.</summary>
+    private static readonly HashSet<IntPtr> claimed = new();
+
     /// <summary>
-    /// The X11 id of the window whose title contains <paramref name="marker"/>. Windows are created with a unique
-    /// title precisely so each page can find its own among several (Uno exposes no native handle).
+    /// This page's X11 window. Uno exposes no native handle, so the window is located in the X tree instead:
+    /// every candidate carries the app's <c>WM_CLASS</c>, and a window is claimed only once so several windows
+    /// keep their own handles. Windows are created with a unique title, which pins the match down when the
+    /// title has survived; under a window manager Uno republishes its own title, so the marker cannot be
+    /// relied on. The search is recursive because a reparenting window manager (any normal desktop) puts the
+    /// window inside a frame instead of directly under the root.
     /// </summary>
     public static IntPtr FindByTitle(string marker)
     {
-        if (!EnsureDisplay() || string.IsNullOrEmpty(marker)) return IntPtr.Zero;
+        if (!EnsureDisplay()) return IntPtr.Zero;
         try
         {
-            if (XQueryTree(display, XRootWindow(display, XDefaultScreen(display)), out _, out _, out var children, out var count) == 0 || children == IntPtr.Zero)
-                return IntPtr.Zero;
-            try
+            var candidates = new List<IntPtr>();
+            Collect(XRootWindow(display, XDefaultScreen(display)), 0, candidates);
+            lock (claimed)
             {
-                for (var i = 0; i < count; i++)
-                {
-                    var child = Marshal.ReadIntPtr(children, i * IntPtr.Size);
-                    if (HasClass(child) && ReadText(child, "WM_NAME").Contains(marker, StringComparison.Ordinal)) return child;
-                }
-            }
-            finally
-            {
-                XFree(children);
+                var free = candidates.Where(w => !claimed.Contains(w)).ToList();
+                if (free.Count == 0) return IntPtr.Zero;
+                var window = free.FirstOrDefault(w => !string.IsNullOrEmpty(marker) && ReadText(w, "WM_NAME").Contains(marker, StringComparison.Ordinal));
+                if (window == IntPtr.Zero) window = free[^1]; // the most recently created one
+                claimed.Add(window);
+                return window;
             }
         }
         catch (Exception ex)
@@ -67,6 +71,26 @@ public static class X11Window
             Log.Error("find window", ex);
         }
         return IntPtr.Zero;
+    }
+
+    /// <summary>Depth-limited walk of the X tree collecting the windows that carry the app's WM_CLASS.</summary>
+    private static void Collect(IntPtr parent, int depth, List<IntPtr> found)
+    {
+        if (depth > 4) return;
+        if (XQueryTree(display, parent, out _, out _, out var children, out var count) == 0 || children == IntPtr.Zero) return;
+        try
+        {
+            for (var i = 0; i < count; i++)
+            {
+                var child = Marshal.ReadIntPtr(children, i * IntPtr.Size);
+                if (HasClass(child)) found.Add(child);
+                else Collect(child, depth + 1, found);
+            }
+        }
+        finally
+        {
+            XFree(children);
+        }
     }
 
     private static string ReadText(IntPtr candidate, string property)

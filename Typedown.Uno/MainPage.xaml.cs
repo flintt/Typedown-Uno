@@ -23,6 +23,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private StartupOptions options = new(null, false, "");
     private Window? window;
     private IntPtr nativeWindow;
+    private bool nativeIconApplied;
 
     private readonly AppSettings settings = AppSettings.Current;
     private EditorTransport? transport;
@@ -55,8 +56,9 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         // The document model is built first and never depends on the web view: if the editor fails to come up
         // (missing WebKitGTK, a stalled native initialization) the shell must still be usable and say why.
         window = App.WindowFor(XamlRoot) ?? App.MainWindow;
-        // This window's X11 id, found through the unique title it was created with (Uno exposes no handle).
-        nativeWindow = Services.X11Window.FindByTitle(options.Marker);
+        // This window's X11 id (Uno exposes no handle). It may not exist yet, so the lookup is retried later.
+        NativeWindow();
+        if (window != null) window.Activated += (_, _) => PublishNativeChrome();
         ApplyStrings();
         BuildMenus();
         ApplyTheme(post: false);
@@ -106,7 +108,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         UpdateTitle();
         UpdateTabBar();
         HookWindowClosing();
-        Services.X11Window.SetIcon(nativeWindow, Path.Combine(AppContext.BaseDirectory, "Assets", "typedown.png"));
+        PublishNativeChrome();
 
         await StartEditorAsync();
     }
@@ -627,7 +629,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         MainMenu.Items.Add(view);
 
         var help = new MenuBarItem { Title = Loc.Get("Help") };
-        help.Items.Add(Item("About", async () => await ShowErrorAsync(Loc.Get("About"), Loc.Get("AboutText"))));
+        help.Items.Add(Item("About", async () => await ShowAboutAsync()));
         MainMenu.Items.Add(help);
     }
 
@@ -1250,9 +1252,73 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     {
         var title = document?.Title ?? "Typedown";
         if (window != null) window.Title = title;
-        // Uno publishes WM_NAME as Latin-1; non-ASCII titles need UTF-8, and each window gets its own.
-        Services.X11Window.SetTitle(nativeWindow, title);
+        // Uno publishes the title as Latin-1 and, under a window manager, not at all after the window is up;
+        // non-ASCII titles need UTF-8, and each window gets its own.
+        PublishNativeChrome();
         StatusText.Text = document?.FilePath ?? Loc.Get("Untitled");
+    }
+
+    /// <summary>
+    /// About: what this build is, and the versions a bug report needs — the editor bundle, Uno, the .NET
+    /// runtime and the system web engine all change what the same document looks like. One button puts the
+    /// whole block on the clipboard so it can be pasted into an issue.
+    /// </summary>
+    private async Task ShowAboutAsync()
+    {
+        var panel = new StackPanel { Spacing = 10 };
+        panel.Children.Add(new TextBlock { Text = Loc.Get("AboutText"), TextWrapping = TextWrapping.Wrap });
+        var details = new StackPanel { Spacing = 2 };
+        foreach (var (label, value) in Services.AppInfo.Lines())
+        {
+            var row = new Grid { ColumnSpacing = 12 };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(140) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            var name = new TextBlock { Text = label, Opacity = 0.7 };
+            var text = new TextBlock { Text = value, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
+            Grid.SetColumn(text, 1);
+            row.Children.Add(name);
+            row.Children.Add(text);
+            details.Children.Add(row);
+        }
+        panel.Children.Add(details);
+        panel.Children.Add(new TextBlock { Text = Loc.Get("AboutIssue"), Opacity = 0.7, TextWrapping = TextWrapping.Wrap });
+        var dialog = new ContentDialog
+        {
+            Title = Loc.Get("About"),
+            Content = panel,
+            PrimaryButtonText = Loc.Get("CopyInfo"),
+            CloseButtonText = Loc.Get("OK"),
+            XamlRoot = XamlRoot,
+            RequestedTheme = DialogTheme,
+        };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            var package = new DataPackage();
+            package.SetText(Services.AppInfo.Summary());
+            Clipboard.SetContent(package);
+            SetStatus(Loc.Get("Copied"));
+        }
+    }
+
+    /// <summary>
+    /// The X11 window backing this page. Looking it up can fail while the window is still coming up (and it
+    /// always failed on a normal desktop before the search became recursive), so it is retried until found.
+    /// </summary>
+    private IntPtr NativeWindow()
+    {
+        if (nativeWindow == IntPtr.Zero) nativeWindow = Services.X11Window.FindByTitle(options.Marker);
+        return nativeWindow;
+    }
+
+    /// <summary>Publishes the UTF-8 title and, once, the app icon on this window.</summary>
+    private void PublishNativeChrome()
+    {
+        var handle = NativeWindow();
+        if (handle == IntPtr.Zero) return;
+        Services.X11Window.SetTitle(handle, document?.Title ?? "Typedown");
+        if (nativeIconApplied) return;
+        nativeIconApplied = true;
+        Services.X11Window.SetIcon(handle, Path.Combine(AppContext.BaseDirectory, "Assets", "typedown.png"));
     }
 
     private static void OpenContainingFolder(string path) => OpenPath(Path.GetDirectoryName(path));
