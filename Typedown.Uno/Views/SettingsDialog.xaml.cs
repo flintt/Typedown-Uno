@@ -63,7 +63,10 @@ public sealed partial class SettingsDialog : ContentDialog
                 }
                 else
                 {
-                    settings.CustomTheme = custom[i - builtIn.Length].Id;
+                    // A custom theme also sets the built-in theme it builds on: one choice, not two.
+                    var picked = custom[i - builtIn.Length];
+                    settings.Theme = picked.Base;
+                    settings.CustomTheme = picked.Id;
                 }
             });
         ThemeFolderRow();

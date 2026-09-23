@@ -841,7 +841,9 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             {
                 var id = custom.Id;
                 var item = new RadioMenuFlyoutItem { Text = Services.ThemeFiles.DisplayName(custom, customThemes), GroupName = "theme" };
-                item.Click += (_, _) => settings.CustomTheme = id;
+                // One choice, not two: the theme also sets the built-in one it builds on, so the window, the
+                // editor and the theme's own CSS can never end up disagreeing about light or dark.
+                item.Click += (_, _) => { settings.Theme = custom.Base; settings.CustomTheme = id; };
                 themeMenuItems.Add((item, id, null));
                 theme.Items.Add(item);
             }
