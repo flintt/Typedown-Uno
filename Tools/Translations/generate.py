@@ -49,7 +49,11 @@ def main():
         "/// <summary>\n/// The translated strings, one table per language, generated from Tools/Translations/tables\n"
         "/// by Tools/Translations/generate.py. English lives in Loc.cs and fills anything a table leaves out.\n"
         "/// </summary>\npublic static partial class LocaleTables\n{\n"
-        f"    public static readonly Dictionary<string, Dictionary<string, string>> All = new()\n    {{\n{registry}    }};\n\n"
+        "    private static Dictionary<string, Dictionary<string, string>>? all;\n\n"
+        "    /// <summary>Built on first use: the tables live in other files of this partial class, and static\n"
+        "    /// field initializers across those files run in no particular order — a field initializer here\n"
+        "    /// would capture them while they are still null.</summary>\n"
+        f"    public static Dictionary<string, Dictionary<string, string>> All => all ??= new()\n    {{\n{registry}    }};\n\n"
         "    /// <summary>Language names for the settings dropdown, each written in its own language.</summary>\n"
         f"    public static readonly Dictionary<string, string> Names = new()\n    {{\n{names}    }};\n}}\n")
     print(f"registry: {len(langs)} languages")

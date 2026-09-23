@@ -228,5 +228,13 @@ public static partial class LocaleTables
         ["Copy"] = "コピー",
         ["Cut"] = "切り取り",
         ["Paste"] = "貼り付け",
+        ["Duplicate"] = "段落を複製",
+        ["DeleteParagraph"] = "段落を削除",
+        ["InsertRowAbove"] = "上に行を挿入",
+        ["InsertRowBelow"] = "下に行を挿入",
+        ["DeleteRow"] = "行を削除",
+        ["InsertColumnLeft"] = "左に列を挿入",
+        ["InsertColumnRight"] = "右に列を挿入",
+        ["DeleteColumn"] = "列を削除",
     };
 }

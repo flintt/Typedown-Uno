@@ -228,5 +228,13 @@ public static partial class LocaleTables
         ["Copy"] = "Копировать",
         ["Cut"] = "Вырезать",
         ["Paste"] = "Вставить",
+        ["Duplicate"] = "Дублировать абзац",
+        ["DeleteParagraph"] = "Удалить абзац",
+        ["InsertRowAbove"] = "Вставить строку выше",
+        ["InsertRowBelow"] = "Вставить строку ниже",
+        ["DeleteRow"] = "Удалить строку",
+        ["InsertColumnLeft"] = "Вставить столбец слева",
+        ["InsertColumnRight"] = "Вставить столбец справа",
+        ["DeleteColumn"] = "Удалить столбец",
     };
 }

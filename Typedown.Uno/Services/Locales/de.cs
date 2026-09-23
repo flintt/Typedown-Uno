@@ -228,5 +228,13 @@ public static partial class LocaleTables
         ["Copy"] = "Kopieren",
         ["Cut"] = "Ausschneiden",
         ["Paste"] = "Einfügen",
+        ["Duplicate"] = "Absatz duplizieren",
+        ["DeleteParagraph"] = "Absatz löschen",
+        ["InsertRowAbove"] = "Zeile darüber einfügen",
+        ["InsertRowBelow"] = "Zeile darunter einfügen",
+        ["DeleteRow"] = "Zeile löschen",
+        ["InsertColumnLeft"] = "Spalte links einfügen",
+        ["InsertColumnRight"] = "Spalte rechts einfügen",
+        ["DeleteColumn"] = "Spalte löschen",
     };
 }

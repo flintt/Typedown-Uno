@@ -228,5 +228,13 @@ public static partial class LocaleTables
         ["Copy"] = "복사",
         ["Cut"] = "잘라내기",
         ["Paste"] = "붙여넣기",
+        ["Duplicate"] = "단락 복제",
+        ["DeleteParagraph"] = "단락 삭제",
+        ["InsertRowAbove"] = "위에 행 삽입",
+        ["InsertRowBelow"] = "아래에 행 삽입",
+        ["DeleteRow"] = "행 삭제",
+        ["InsertColumnLeft"] = "왼쪽에 열 삽입",
+        ["InsertColumnRight"] = "오른쪽에 열 삽입",
+        ["DeleteColumn"] = "열 삭제",
     };
 }

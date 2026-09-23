@@ -259,6 +259,17 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         cut = Loc.Get("Cut"),
         paste = Loc.Get("Paste"),
         selectAll = Loc.Get("SelectAll"),
+        // the floating tools the page draws for the editor
+        duplicate = Loc.Get("Duplicate"),
+        insertBefore = Loc.Get("InsertBefore"),
+        insertAfter = Loc.Get("InsertAfter"),
+        deleteParagraph = Loc.Get("DeleteParagraph"),
+        insertRowAbove = Loc.Get("InsertRowAbove"),
+        insertRowBelow = Loc.Get("InsertRowBelow"),
+        deleteRow = Loc.Get("DeleteRow"),
+        insertColLeft = Loc.Get("InsertColumnLeft"),
+        insertColRight = Loc.Get("InsertColumnRight"),
+        deleteCol = Loc.Get("DeleteColumn"),
     });
 
     /// <summary>Puts the clipboard's text through the editor's paste handler, as Ctrl+V would.</summary>
@@ -405,6 +416,24 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             case "ClipboardImageRequest":
                 DispatcherQueue.TryEnqueue(async () => await InsertClipboardImageAsync());
                 break;
+            case "ReplaceImageRequest":
+                // The image toolbar's edit button: pick a file, put it where the settings say, and hand the new
+                // path back to the editor, which swaps the src of the image that is selected.
+                DispatcherQueue.TryEnqueue(async () =>
+                {
+                    var picked = await PickImageFileAsync();
+                    if (picked == null || document == null) return;
+                    try
+                    {
+                        var link = ImagePaths.PlaceImage(picked, document.FilePath, settings);
+                        await Post("ImageEditToolbarClick", new { type = "updateImage", attrName = "src", attrValue = link });
+                    }
+                    catch (Exception ex)
+                    {
+                        Services.Log.Error("replace image", ex);
+                    }
+                });
+                break;
             case "ClipboardSetText":
                 var copyText = args?["text"]?.GetValue<string>();
                 if (!string.IsNullOrEmpty(copyText)) DispatcherQueue.TryEnqueue(() =>
@@ -422,6 +451,16 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             case "ImagePasted":
                 var dataUrl = args?["dataUrl"]?.GetValue<string>();
                 if (dataUrl != null) DispatcherQueue.TryEnqueue(async () => await InsertPastedImageAsync(dataUrl));
+                break;
+            // The editor asks the host to draw these; the page draws them instead (a host popup would end up behind
+            // the native web view), so they go straight back with the arguments reassembled.
+            case "OpenFormatPicker":
+            case "OpenImageToolbar":
+            case "OpenFrontMenu":
+            case "OpenTableTools":
+            case "OpenToolTip":
+                var floatArgs = args?.DeepClone();
+                DispatcherQueue.TryEnqueue(async () => await Post("ShowFloat", new { kind = name, args = floatArgs }));
                 break;
             case "Shortcut":
                 var key = args?["key"]?.GetValue<string>() ?? "";
@@ -569,6 +608,13 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
 
     private async Task InsertImageDialogAsync()
     {
+        var path = await PickImageFileAsync();
+        if (path != null) await InsertImageFileAsync(path);
+    }
+
+    /// <summary>Asks for an image file with whichever picker works on this platform.</summary>
+    private async Task<string?> PickImageFileAsync()
+    {
         string? path;
         if (UseBuiltInPicker)
         {
@@ -581,7 +627,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             InitPicker(picker);
             path = (await picker.PickSingleFileAsync())?.Path;
         }
-        if (path != null) await InsertImageFileAsync(path);
+        return path;
     }
 
     // ---- menus ------------------------------------------------------------------------------------------------------

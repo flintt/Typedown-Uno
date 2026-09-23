@@ -233,5 +233,13 @@ public static partial class LocaleTables
         ["Copy"] = "复制",
         ["Cut"] = "剪切",
         ["Paste"] = "粘贴",
+        ["Duplicate"] = "复制段落",
+        ["DeleteParagraph"] = "删除段落",
+        ["InsertRowAbove"] = "在上方插入行",
+        ["InsertRowBelow"] = "在下方插入行",
+        ["DeleteRow"] = "删除行",
+        ["InsertColumnLeft"] = "在左侧插入列",
+        ["InsertColumnRight"] = "在右侧插入列",
+        ["DeleteColumn"] = "删除列",
     };
 }

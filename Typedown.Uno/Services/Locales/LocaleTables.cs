@@ -8,7 +8,12 @@ namespace Typedown.Uno.Services;
 /// </summary>
 public static partial class LocaleTables
 {
-    public static readonly Dictionary<string, Dictionary<string, string>> All = new()
+    private static Dictionary<string, Dictionary<string, string>>? all;
+
+    /// <summary>Built on first use: the tables live in other files of this partial class, and static
+    /// field initializers across those files run in no particular order — a field initializer here
+    /// would capture them while they are still null.</summary>
+    public static Dictionary<string, Dictionary<string, string>> All => all ??= new()
     {
         ["de"] = de,
         ["es"] = es,

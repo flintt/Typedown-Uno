@@ -65,6 +65,9 @@ public static class Loc
         ["AboutEditor"] = "Editor engine", ["AboutWebEngine"] = "Web engine", ["AboutSystem"] = "System", ["AboutSession"] = "Desktop session",
         ["CopyInfo"] = "Copy details", ["Copied"] = "Copied", ["AboutIssue"] = "Please include these details in a bug report.",
         ["Copy"] = "Copy", ["Cut"] = "Cut", ["Paste"] = "Paste",
+        ["Duplicate"] = "Duplicate", ["DeleteParagraph"] = "Delete paragraph",
+        ["InsertRowAbove"] = "Insert row above", ["InsertRowBelow"] = "Insert row below", ["DeleteRow"] = "Delete row",
+        ["InsertColumnLeft"] = "Insert column left", ["InsertColumnRight"] = "Insert column right", ["DeleteColumn"] = "Delete column",
     };
 
     /// <summary>

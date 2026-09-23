@@ -61,6 +61,17 @@
     }
     function local(name, args) { deliver(JSON.stringify({ name: name, args: args })); }
 
+    // UI the editor expects the host to draw. The editor's reports are sent diffed, so the host reassembles them
+    // and hands each one back as "ShowFloat"; the drawing happens here because a host popup cannot cover the
+    // native web view on Linux.
+    var floatHandlers = {
+        OpenFormatPicker: function (a) { showFormatPicker(a); },
+        OpenImageToolbar: function (a) { showImageToolbar(a); },
+        OpenFrontMenu: function (a) { showFrontMenu(a); },
+        OpenTableTools: function (a) { showTableTools(a); },
+        OpenToolTip: function (a) { showToolTip(a); }
+    };
+
     // In-page find bar. Keyboard focus cannot be moved from the native web view to the host window on Linux/macOS,
     // so the find UI lives in the page and drives the editor's own Search/Find handlers directly.
     var findBar = null, findInput = null, findCount = null;
@@ -245,6 +256,163 @@
     window.addEventListener('scroll', hideContextMenu, true);
     window.addEventListener('blur', hideContextMenu);
 
+
+    // Floating tools. The editor hands these to the host (the Windows edition draws them as XAML flyouts) and
+    // this port had none of them, so selecting text or clicking an image showed nothing at all. Like the context
+    // menu they live in the page, because a host popup cannot cover the native web view on Linux.
+    var floatBox = null, floatKind = null;
+
+    function hideFloat() {
+        if (floatBox) { floatBox.style.display = 'none'; floatKind = null; }
+    }
+
+    function floatContainer() {
+        if (!floatBox) {
+            floatBox = document.createElement('div');
+            floatBox.id = 'uno-float-tools';
+            floatBox.style.cssText = 'position:fixed;z-index:100000;display:none;padding:3px;border-radius:6px;' +
+                'background:rgba(250,250,250,0.98);border:1px solid rgba(128,128,128,0.35);box-shadow:0 6px 18px rgba(0,0,0,0.18);' +
+                'font:13px system-ui,sans-serif;color:#222;user-select:none;white-space:nowrap;';
+            document.body.appendChild(floatBox);
+        }
+        floatBox.textContent = '';
+        return floatBox;
+    }
+
+    /// Places the box above the reference rectangle, or below it when there is no room.
+    function placeFloat(rect) {
+        floatBox.style.display = 'block';
+        var box = floatBox.getBoundingClientRect();
+        var left = Math.max(4, Math.min((rect.left + rect.width / 2) - box.width / 2, window.innerWidth - box.width - 4));
+        var top = rect.top - box.height - 8;
+        if (top < 4) top = rect.bottom + 8;
+        floatBox.style.left = left + 'px';
+        floatBox.style.top = top + 'px';
+    }
+
+    function toolButton(label, title, active, run) {
+        var b = document.createElement('button');
+        b.textContent = label;
+        b.title = title || '';
+        b.style.cssText = 'min-width:28px;height:26px;margin:0 1px;padding:0 6px;border:none;border-radius:4px;cursor:pointer;' +
+            'font:13px system-ui,sans-serif;background:' + (active ? 'rgba(0,120,212,0.18)' : 'transparent') + ';color:#222;';
+        b.addEventListener('mouseenter', function () { if (!active) b.style.background = 'rgba(128,128,128,0.18)'; });
+        b.addEventListener('mouseleave', function () { if (!active) b.style.background = 'transparent'; });
+        b.addEventListener('mousedown', function (e) { e.preventDefault(); e.stopPropagation(); });
+        b.addEventListener('mouseup', function (e) { e.preventDefault(); e.stopPropagation(); run(); });
+        return b;
+    }
+
+    // Select text -> bold/italic/… bar. `formats` says which ones the selection already has.
+    function showFormatPicker(args) {
+        var active = {};
+        (args.formats || []).forEach(function (f) { active[f.type] = true; });
+        var box = floatContainer();
+        [['B', 'strong', 'font-weight:700'], ['I', 'em', 'font-style:italic'], ['U', 'u', 'text-decoration:underline'],
+         ['S', 'del', 'text-decoration:line-through'], ['</>', 'inline_code', ''], ['M', 'mark', 'background:rgba(255,235,0,0.5)'],
+         ['∑', 'inline_math', ''], ['🔗', 'link', ''], ['⌫', 'clear', '']].forEach(function (item) {
+            var b = toolButton(item[0], item[1], !!active[item[1]], function () { local('Format', item[1]); hideFloat(); });
+            if (item[2]) b.style.cssText += ';' + item[2];
+            box.appendChild(b);
+        });
+        floatKind = 'format';
+        placeFloat(args.boundingClientRect);
+    }
+
+    // Click an image -> alignment and delete.
+    function showImageToolbar(args) {
+        var attrs = args.attrs || {};
+        var align = attrs['data-align'];
+        var box = floatContainer();
+        [['⇤', 'left'], ['⇔', 'center'], ['⇥', 'right'], ['⇹', 'inline']].forEach(function (item) {
+            box.appendChild(toolButton(item[0], item[1], align === item[1], function () {
+                local('ImageEditToolbarClick', { type: item[1] });
+                hideFloat();
+            }));
+        });
+        // 'edit' would ask for the host's image selector, which this port does not draw; picking a replacement
+        // file is what that button is for anyway.
+        box.appendChild(toolButton('✎', 'edit', false, function () {
+            hideFloat();
+            send(JSON.stringify({ type: 'message', name: 'ReplaceImageRequest', args: {} }));
+        }));
+        box.appendChild(toolButton('🗑', 'delete', false, function () { local('ImageEditToolbarClick', { type: 'delete' }); hideFloat(); }));
+        floatKind = 'image';
+        placeFloat(args.boundingClientRect);
+    }
+
+    // Click the paragraph marker -> what to do with the block.
+    function showFrontMenu(args) {
+        var box = floatContainer();
+        box.style.whiteSpace = 'normal';
+        var items = [
+            [menuStrings.duplicate, function () { local('Duplicate'); }],
+            [menuStrings.insertBefore, function () { local('InsertParagraph', 'before'); }],
+            [menuStrings.insertAfter, function () { local('InsertParagraph', 'after'); }],
+            [menuStrings.deleteParagraph, function () { local('DeleteParagraph'); }]
+        ];
+        items.forEach(function (item) {
+            var row = document.createElement('div');
+            row.textContent = item[0];
+            row.style.cssText = 'padding:6px 12px;border-radius:4px;cursor:pointer;';
+            row.addEventListener('mouseenter', function () { row.style.background = 'rgba(128,128,128,0.18)'; });
+            row.addEventListener('mouseleave', function () { row.style.background = 'transparent'; });
+            row.addEventListener('mouseup', function (e) { e.preventDefault(); e.stopPropagation(); hideFloat(); local('FrontMenuClosed'); item[1](); });
+            box.appendChild(row);
+        });
+        floatKind = 'front';
+        placeFloat(args.boundingClientRect);
+    }
+
+    // Click a table's drag bar -> rows and columns.
+    function showTableTools(args) {
+        var bar = (args.tableInfo || {}).barType;
+        var box = floatContainer();
+        var items = bar === 'left'
+            ? [[menuStrings.insertRowAbove, 'insert', 'previous', 'row'], [menuStrings.insertRowBelow, 'insert', 'next', 'row'], [menuStrings.deleteRow, 'remove', 'current', 'row']]
+            : [[menuStrings.insertColLeft, 'insert', 'left', 'column'], [menuStrings.insertColRight, 'insert', 'right', 'column'], [menuStrings.deleteCol, 'remove', 'current', 'column']];
+        box.style.whiteSpace = 'normal';
+        items.forEach(function (item) {
+            var row = document.createElement('div');
+            row.textContent = item[0];
+            row.style.cssText = 'padding:6px 12px;border-radius:4px;cursor:pointer;';
+            row.addEventListener('mouseenter', function () { row.style.background = 'rgba(128,128,128,0.18)'; });
+            row.addEventListener('mouseleave', function () { row.style.background = 'transparent'; });
+            row.addEventListener('mouseup', function (e) {
+                e.preventDefault(); e.stopPropagation(); hideFloat();
+                local('EditTable', { action: item[1], location: item[2], target: item[3] });
+            });
+            box.appendChild(row);
+        });
+        floatKind = 'table';
+        placeFloat(args.boundingClientRect);
+    }
+
+    // Hover tooltip for the editor's own icons.
+    var tipBox = null;
+    function showToolTip(args) {
+        if (!args.open) { if (tipBox) tipBox.style.display = 'none'; return; }
+        if (!tipBox) {
+            tipBox = document.createElement('div');
+            tipBox.id = 'uno-tooltip';
+            tipBox.style.cssText = 'position:fixed;z-index:100002;display:none;padding:3px 8px;border-radius:4px;' +
+                'background:rgba(40,40,40,0.92);color:#fff;font:12px system-ui,sans-serif;pointer-events:none;white-space:nowrap;';
+            document.body.appendChild(tipBox);
+        }
+        tipBox.textContent = menuStrings['tip_' + args.tooltip] || args.tooltip;
+        tipBox.style.display = 'block';
+        var rect = args.boundingClientRect, box = tipBox.getBoundingClientRect();
+        tipBox.style.left = Math.max(4, Math.min(rect.left + rect.width / 2 - box.width / 2, window.innerWidth - box.width - 4)) + 'px';
+        var top = rect.top - box.height - 6;
+        tipBox.style.top = (top < 4 ? rect.bottom + 6 : top) + 'px';
+    }
+
+    window.addEventListener('mousedown', function (e) {
+        if (floatBox && floatKind && !floatBox.contains(e.target)) hideFloat();
+    }, true);
+    window.addEventListener('keydown', function (e) { if (e.key === 'Escape') hideFloat(); }, true);
+    window.addEventListener('scroll', hideFloat, true);
+
     // Files dropped on the editor: the page is a native web view, so the host never sees the drop. WebKit exposes
     // the dropped paths as text/uri-list, which is enough for the host to open documents and insert images.
     window.addEventListener('dragover', function (e) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }, true);
@@ -302,6 +470,11 @@
                 return;
             }
             if (msg && msg.name === 'ContextMenuStrings') { menuStrings = Object.assign(menuStrings, msg.args || {}); return; }
+            if (msg && msg.name === 'ShowFloat') {
+                var handler = floatHandlers[msg.args && msg.args.kind];
+                if (handler) handler((msg.args && msg.args.args) || {});
+                return;
+            }
             if (msg && msg.name === 'ShowFind') { if (msg.args && msg.args.opt) findOptions = msg.args.opt; showFind(msg.args && msg.args.value); return; }
             if (msg && msg.name === 'HideFind') { hideFind(); return; }
         } catch (e) { }
