@@ -25,10 +25,33 @@ public sealed partial class SettingsDialog : ContentDialog
         this.InitializeComponent();
         Title = Loc.Get("SettingsTitle");
         CloseButtonText = Loc.Get("Close");
+        Rebuild();
+        // Every label in here came from the language in force when it was built, so a change of language has to
+        // build them again — otherwise the dialog you changed it in is the one place still in the old language.
+        settings.PropertyChanged += OnSettingsChanged;
+        Closed += (_, _) => settings.PropertyChanged -= OnSettingsChanged;
+    }
+
+    private void OnSettingsChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(AppSettings.Language)) return;
+        // The language is applied by the page that owns the settings; by the time this runs Loc already has it.
+        DispatcherQueue.TryEnqueue(Rebuild);
+    }
+
+    private void Rebuild()
+    {
+        var section = Math.Max(0, Categories.SelectedIndex);
+        loading = true;
+        Title = Loc.Get("SettingsTitle");
+        CloseButtonText = Loc.Get("Close");
+        sections.Clear();
+        Categories.Items.Clear();
+        Container.Children.Clear();
         Build();
         foreach (var key in sections.Keys) Categories.Items.Add(Loc.Get(key));
         loading = false;
-        Categories.SelectedIndex = 0;
+        Categories.SelectedIndex = Math.Min(section, sections.Count - 1);
     }
 
     private void OnCategoryChanged(object sender, SelectionChangedEventArgs e)

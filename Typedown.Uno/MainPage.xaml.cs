@@ -661,6 +661,29 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private readonly List<(RadioMenuFlyoutItem Item, string? CustomId, AppTheme? BuiltIn)> themeMenuItems = new();
 
     /// <summary>
+    /// The editor is a WebKitGTK view of its own inside the window, and it paints its own background — white —
+    /// in whatever a resize or a re-render exposes before the page is drawn again. Painted in the colour the
+    /// page itself uses, that moment stops showing up as a white band.
+    /// </summary>
+    private void ApplyEditorWindowBackground()
+    {
+        var theme = Services.ThemeFiles.Find(settings.CustomTheme);
+        // A theme's "background" is the editor's own colour (see docs/custom-theme.md); without one the built-in
+        // theme's editor background is what the web view will paint anyway.
+        var colour = Brush(theme?.Background) as SolidColorBrush;
+        var (r, g, b) = colour is null
+            ? EffectiveTheme switch
+            {
+                AppTheme.Black => ((byte)0, (byte)0, (byte)0),
+                AppTheme.Dark => ((byte)0x27, (byte)0x27, (byte)0x27),
+                AppTheme.System when IsDarkTheme => ((byte)0x27, (byte)0x27, (byte)0x27),
+                _ => ((byte)0xf9, (byte)0xf9, (byte)0xf9),
+            }
+            : (colour.Color.R, colour.Color.G, colour.Color.B);
+        Services.WebViewBackground.Apply(EditorView, r, g, b);
+    }
+
+    /// <summary>
     /// Gives a dialog the colours of the custom theme, so that opening one over a themed window does not drop
     /// back to the built-in palette. A theme that names no colours leaves the dialog as it is.
     /// </summary>
@@ -1481,6 +1504,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             root.RequestedTheme = effective == AppTheme.System ? ElementTheme.Default
                 : effective == AppTheme.Light ? ElementTheme.Light : ElementTheme.Dark;
         ApplyShellColours(Services.ThemeFiles.Find(settings.CustomTheme));
+        ApplyEditorWindowBackground();
         if (!post) return;
         _ = Post("ThemeChanged", ThemePayload());
         // the theme's own CSS rides on the settings channel, next to the user's custom CSS

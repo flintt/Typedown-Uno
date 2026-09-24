@@ -7,7 +7,8 @@ en.json is the reference: English is built into Loc.cs and is the fallback for e
 table does not carry, so a table only needs the strings that differ. A key that is not in
 en.json is a typo and stops the run.
 """
-import json, os, glob, sys
+import json
+import re, os, glob, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TABLES = os.path.join(HERE, 'tables')
@@ -26,6 +27,13 @@ def identifier(lang):
 
 def main():
     reference = json.load(open(os.path.join(TABLES, 'en.json'), encoding='utf-8'))
+    # English lives in Loc.cs and is the fallback for every language, so a key that never reached it shows up
+    # as its own name in the interface — which is how "ThemeDocument" once appeared in a menu.
+    loc = open(os.path.join(os.path.dirname(TABLES), '..', '..', 'Typedown.Uno', 'Services', 'Loc.cs'), encoding='utf-8').read()
+    in_loc = set(re.findall(r'\["([A-Za-z0-9_]+)"\]\s*=', loc))
+    absent = [k for k in reference if k not in in_loc]
+    if absent:
+        raise SystemExit('these keys are missing from the English fallback in Loc.cs: ' + ', '.join(absent))
     langs = sorted(os.path.basename(p)[:-5] for p in glob.glob(os.path.join(TABLES, '*.json')))
     langs = [l for l in langs if l != 'en']
     os.makedirs(OUT, exist_ok=True)
