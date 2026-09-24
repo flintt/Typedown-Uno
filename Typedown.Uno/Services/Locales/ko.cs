@@ -259,5 +259,7 @@ public static partial class LocaleTables
         ["PdfFailed"] = "PDF를 만들 수 없습니다.",
         ["PdfUnavailable"] = "PDF 내보내기에는 WebKitGTK가 필요하지만 이 환경에서는 사용할 수 없습니다.",
         ["ImportHtml"] = "HTML 가져오기…",
+        ["ExportImage"] = "이미지로 내보내기…",
+        ["ImageFailed"] = "이미지를 만들 수 없습니다.",
     };
 }

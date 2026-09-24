@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace Typedown.Uno.Services;
 
 /// <summary>
-/// Printing and PDF export on Linux, straight through WebKitGTK.
+/// Printing, PDF export and picture export on Linux, straight through WebKitGTK.
 ///
 /// Uno's web view exposes nothing of the kind, so the page is loaded into a second, offscreen WebKitGTK view
 /// and that view's print operation is used: with a print dialog for "Print…", and with the settings pointed at
@@ -12,12 +12,13 @@ namespace Typedown.Uno.Services;
 /// Everything here has to run on the GTK main loop, hence the g_idle_add hop; the result comes back through a
 /// TaskCompletionSource once WebKit says the operation finished.
 /// </summary>
-public static class WebKitPrint
+public static class WebKitExport
 {
     private const string LibWebKit = "libwebkit2gtk-4.1.so";
     private const string LibGtk = "libgtk-3.so.0";
     private const string LibGLib = "libglib-2.0.so.0";
     private const string LibGObject = "libgobject-2.0.so.0";
+    private const string LibCairo = "libcairo.so.2";
 
     [DllImport(LibGLib)] private static extern uint g_idle_add(GSourceFunc function, IntPtr data);
     [DllImport(LibGObject)] private static extern ulong g_signal_connect_data(IntPtr instance, string signal, Delegate handler, IntPtr data, IntPtr destroy, int flags);
@@ -46,15 +47,22 @@ public static class WebKitPrint
     [DllImport(LibWebKit)] private static extern void webkit_print_operation_set_page_setup(IntPtr op, IntPtr setup);
     [DllImport(LibWebKit)] private static extern void webkit_print_operation_print(IntPtr op);
     [DllImport(LibWebKit)] private static extern int webkit_print_operation_run_dialog(IntPtr op, IntPtr parent);
+    [DllImport(LibWebKit)] private static extern void webkit_web_view_get_snapshot(IntPtr webView, int region, int options, IntPtr cancellable, GAsyncReadyCallback callback, IntPtr data);
+    [DllImport(LibWebKit)] private static extern IntPtr webkit_web_view_get_snapshot_finish(IntPtr webView, IntPtr result, out IntPtr error);
+    [DllImport(LibCairo)] private static extern int cairo_surface_write_to_png(IntPtr surface, string filename);
+    [DllImport(LibCairo)] private static extern void cairo_surface_destroy(IntPtr surface);
 
     private delegate bool GSourceFunc(IntPtr data);
     private delegate void LoadChangedHandler(IntPtr webView, int loadEvent, IntPtr data);
     private delegate void PrintFinishedHandler(IntPtr op, IntPtr data);
     private delegate void PrintFailedHandler(IntPtr op, IntPtr error, IntPtr data);
+    private delegate void GAsyncReadyCallback(IntPtr source, IntPtr result, IntPtr data);
 
     private const int LoadFinished = 3;      // WEBKIT_LOAD_FINISHED
     private const int UnitMillimetre = 3;    // GtkUnit: none, points, inch, mm
     private const int PagesAll = 0;          // GTK_PRINT_PAGES_ALL
+    private const int SnapshotWholeDocument = 1; // WEBKIT_SNAPSHOT_REGION_FULL_DOCUMENT
+    private const int CairoStatusSuccess = 0;
 
     public static bool Available => OperatingSystem.IsLinux();
 
@@ -181,6 +189,94 @@ public static class WebKitPrint
         _ = Task.Delay(TimeSpan.FromSeconds(60)).ContinueWith(_ => done.TrySetResult(false));
         return done.Task;
     }
+
+    /// <summary>Renders an HTML file to a PNG: the whole document, however long it is, in one picture.</summary>
+    public static Task<bool> ExportImageAsync(string htmlPath, string pngPath, int width = 1000, int height = 900)
+    {
+        var done = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!Available || !File.Exists(htmlPath))
+        {
+            done.TrySetResult(false);
+            return done.Task;
+        }
+
+        GSourceFunc start = _ =>
+        {
+            IntPtr window = IntPtr.Zero;
+            try
+            {
+                window = gtk_offscreen_window_new();
+                var view = webkit_web_view_new();
+                // The picture grows to the whole document; this height only decides how much empty space a
+                // document shorter than one screen comes with (the exported page asks for a full screen).
+                gtk_widget_set_size_request(view, width, height);
+                gtk_container_add(window, view);
+                gtk_widget_show_all(window);
+                var closedWindow = window;
+
+                LoadChangedHandler onLoad = (_, loadEvent, __) =>
+                {
+                    if (loadEvent != LoadFinished) return;
+                    GAsyncReadyCallback onSnapshot = (source, result, ___) =>
+                    {
+                        var surface = IntPtr.Zero;
+                        try
+                        {
+                            surface = webkit_web_view_get_snapshot_finish(source, result, out var error);
+                            if (surface == IntPtr.Zero)
+                            {
+                                Log.Write($"webkit snapshot failed: {ErrorMessage(error)}");
+                                done.TrySetResult(false);
+                                return;
+                            }
+                            var status = cairo_surface_write_to_png(surface, pngPath);
+                            if (status != CairoStatusSuccess) Log.Write($"writing the picture to {pngPath} failed with cairo status {status}");
+                            done.TrySetResult(status == CairoStatusSuccess && File.Exists(pngPath));
+                        }
+                        catch (Exception ex)
+                        {
+                            Log.Error("webkit snapshot", ex);
+                            done.TrySetResult(false);
+                        }
+                        finally
+                        {
+                            if (surface != IntPtr.Zero) cairo_surface_destroy(surface);
+                            Cleanup(closedWindow);
+                        }
+                    };
+                    lock (alive) { alive.Add(onSnapshot); }
+                    // The page has just finished loading; giving the layout a moment keeps late images and
+                    // web fonts from being left out of the picture.
+                    g_timeout_add(400, () => { webkit_web_view_get_snapshot(view, SnapshotWholeDocument, 0, IntPtr.Zero, onSnapshot, IntPtr.Zero); return false; });
+                };
+                lock (alive) { alive.Add(onLoad); }
+                g_signal_connect_data(view, "load-changed", onLoad, IntPtr.Zero, IntPtr.Zero, 0);
+                webkit_web_view_load_uri(view, new Uri(htmlPath).AbsoluteUri);
+            }
+            catch (Exception ex)
+            {
+                Log.Error("webkit snapshot setup", ex);
+                done.TrySetResult(false);
+                Cleanup(window);
+            }
+            return false;
+        };
+
+        lock (alive) { alive.Add(start); }
+        g_idle_add(start, IntPtr.Zero);
+        _ = Task.Delay(TimeSpan.FromSeconds(60)).ContinueWith(_ => done.TrySetResult(false));
+        return done.Task;
+    }
+
+    /// <summary>g_timeout_add with the delegate kept alive for as long as it can be called.</summary>
+    private static void g_timeout_add(uint ms, Func<bool> action)
+    {
+        GSourceFunc wrapper = _ => action();
+        lock (alive) { alive.Add(wrapper); }
+        g_timeout_add(ms, wrapper, IntPtr.Zero);
+    }
+
+    [DllImport(LibGLib, EntryPoint = "g_timeout_add")] private static extern uint g_timeout_add(uint interval, GSourceFunc function, IntPtr data);
 
     /// <summary>The text of a GError (domain, code, then the message pointer).</summary>
     private static string ErrorMessage(IntPtr error)

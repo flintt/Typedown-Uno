@@ -264,5 +264,7 @@ public static partial class LocaleTables
         ["PdfFailed"] = "无法生成 PDF。",
         ["PdfUnavailable"] = "导出 PDF 需要 WebKitGTK，当前系统不可用。",
         ["ImportHtml"] = "导入 HTML…",
+        ["ExportImage"] = "导出图片…",
+        ["ImageFailed"] = "无法生成图片。",
     };
 }

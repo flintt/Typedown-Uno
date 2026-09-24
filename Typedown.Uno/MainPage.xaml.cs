@@ -800,6 +800,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         file.Items.Add(Item("ImportHtml", async () => await ImportHtmlAsync()));
         file.Items.Add(Item("ExportHtml", async () => await ExportHtmlAsync(), ShortcutCommand.ExportHtml));
         file.Items.Add(Item("ExportPdf", async () => await ExportPdfAsync(), ShortcutCommand.ExportPdf));
+        file.Items.Add(Item("ExportImage", async () => await ExportImageAsync()));
         file.Items.Add(Item("PrintPdf", async () => await PrintAsync(), ShortcutCommand.Print));
         file.Items.Add(Item("ShareHedgeDoc", async () => await ShareToHedgeDocAsync(), ShortcutCommand.ShareHedgeDoc));
         file.Items.Add(new MenuFlyoutSeparator());
@@ -1751,7 +1752,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             target = await PickSaveFileAsync(suggested);
         if (target == null) return;
         if (!target.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)) target += ".pdf";
-        if (!WebKitPrint.Available)
+        if (!WebKitExport.Available)
         {
             await ShowErrorAsync(Loc.Get("ExportPdf"), Loc.Get("PdfUnavailable"));
             return;
@@ -1759,7 +1760,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         SetStatus(Loc.Get("Exporting"));
         await ExportThroughHtmlAsync(async html =>
         {
-            var ok = await WebKitPrint.ExportPdfAsync(html, target!);
+            var ok = await WebKitExport.ExportPdfAsync(html, target!);
             try { File.Delete(html); } catch { }
             if (ok)
             {
@@ -1773,6 +1774,40 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         });
     }
 
+    /// <summary>Writes the document to a PNG: the whole page in one picture, however long it is.</summary>
+    private async Task ExportImageAsync()
+    {
+        if (document == null) return;
+        var suggested = Path.GetFileNameWithoutExtension(document.FileName) + ".png";
+        string? target;
+        if (UseBuiltInPicker)
+            target = await ShowBuiltInPickerAsync(FilePickerDialog.PickerMode.SaveFile, suggested, new[] { ".png" });
+        else
+            target = await PickSaveFileAsync(suggested);
+        if (target == null) return;
+        if (!target.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) target += ".png";
+        if (!WebKitExport.Available)
+        {
+            await ShowErrorAsync(Loc.Get("ExportImage"), Loc.Get("PdfUnavailable"));
+            return;
+        }
+        SetStatus(Loc.Get("Exporting"));
+        await ExportThroughHtmlAsync(async html =>
+        {
+            var ok = await WebKitExport.ExportImageAsync(html, target!);
+            try { File.Delete(html); } catch { }
+            if (ok)
+            {
+                SetStatus(Loc.Format("Exported", target!));
+                if (settings.OpenFolderAfterExport) OpenContainingFolder(target!);
+            }
+            else
+            {
+                await ShowErrorAsync(Loc.Get("ExportImage"), Loc.Get("ImageFailed"));
+            }
+        });
+    }
+
     /// <summary>
     /// Prints through WebKitGTK's own print dialog. Where that is not available the document is opened in the
     /// browser instead, whose print dialog can do the same job.
@@ -1782,7 +1817,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         if (document == null) return;
         await ExportThroughHtmlAsync(async html =>
         {
-            if (WebKitPrint.Available && await WebKitPrint.PrintAsync(html))
+            if (WebKitExport.Available && await WebKitExport.PrintAsync(html))
             {
                 try { File.Delete(html); } catch { }
                 return;
