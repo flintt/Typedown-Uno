@@ -907,6 +907,13 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         view.Items.Add(Toggle("ReadOnly", () => settings.ReadOnly, v => settings.ReadOnly = v, ShortcutCommand.ReadingMode));
         view.Items.Add(new MenuFlyoutSeparator());
         view.Items.Add(Toggle("SidePane", () => settings.SidePaneOpen, v => settings.SidePaneOpen = v, ShortcutCommand.SidePane));
+        view.Items.Add(Toggle("StatusBar", () => settings.StatusBarOpen, v => settings.StatusBarOpen = v));
+        view.Items.Add(Item("FullScreen", ToggleFullScreen, ShortcutCommand.FullScreen));
+        view.Items.Add(new MenuFlyoutSeparator());
+        view.Items.Add(Item("NextTab", async () => { if (tabs != null) await tabs.SwitchRelativeAsync(1); }, ShortcutCommand.NextTab));
+        view.Items.Add(Item("PreviousTab", async () => { if (tabs != null) await tabs.SwitchRelativeAsync(-1); }, ShortcutCommand.PreviousTab));
+        view.Items.Add(Item("LastUsedTab", async () => { if (tabs != null) await tabs.SwitchToLastUsedAsync(); }));
+        view.Items.Add(new MenuFlyoutSeparator());
         var theme = new MenuFlyoutSubItem { Text = Loc.Get("Theme") };
         themeMenuItems.Clear();
         foreach (var t in Enum.GetValues<AppTheme>())
@@ -2124,6 +2131,26 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     /// Linux gets the app's own chooser: the platform pickers there go through the XDG desktop portal, which is
     /// absent on many desktops, and then the dialog simply never appears. Windows and macOS keep the native one.
     /// </summary>
+    private bool fullScreen;
+
+    /// <summary>Full screen through the window presenter; not every platform backend has one.</summary>
+    private void ToggleFullScreen()
+    {
+        try
+        {
+            var appWindow = window?.AppWindow;
+            if (appWindow == null) return;
+            fullScreen = !fullScreen;
+            appWindow.SetPresenter(fullScreen
+                ? Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen
+                : Microsoft.UI.Windowing.AppWindowPresenterKind.Default);
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Error("full screen", ex);
+        }
+    }
+
     private static bool UseBuiltInPicker => OperatingSystem.IsLinux();
 
     private string PickerStartDirectory => workFolder

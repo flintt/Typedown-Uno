@@ -8,7 +8,7 @@ public enum ShortcutCommand
 {
     NewTab, NewWindow, Open, OpenFolder, Save, SaveAs, ExportHtml, ExportPdf, Print, ShareHedgeDoc, Settings, CloseTab, Exit,
     Undo, Redo, Find, FindNext, FindPrevious, Replace, SearchInFolder, SelectAll,
-    NextTab, PreviousTab, SidePane, ReadingMode, SourceCode, InsertImage,
+    NextTab, PreviousTab, SidePane, ReadingMode, SourceCode, InsertImage, FullScreen,
 }
 
 /// <summary>A key binding: modifiers plus one key, stored and displayed as "Ctrl+Shift+S".</summary>
@@ -114,6 +114,7 @@ public sealed class ShortcutMap
         [ShortcutCommand.ReadingMode] = Shortcut.Parse("Ctrl+Shift+R"),
         [ShortcutCommand.SourceCode] = Shortcut.Parse("Ctrl+/"),
         [ShortcutCommand.InsertImage] = Shortcut.None,
+        [ShortcutCommand.FullScreen] = Shortcut.Parse("F11"),
     };
 
     /// <summary>Overrides only; the defaults stay implicit so a later default change reaches existing users.</summary>

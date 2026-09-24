@@ -261,5 +261,8 @@ public static partial class LocaleTables
         ["ImportHtml"] = "HTML を読み込む…",
         ["ExportImage"] = "画像に書き出す…",
         ["ImageFailed"] = "画像を作成できませんでした。",
+        ["NextTab"] = "次のタブ",
+        ["PreviousTab"] = "前のタブ",
+        ["LastUsedTab"] = "最後に使ったタブ",
     };
 }

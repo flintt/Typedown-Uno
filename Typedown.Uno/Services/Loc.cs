@@ -26,7 +26,7 @@ public static class Loc
         ["Toc"] = "Table of contents", ["FrontMatter"] = "YAML front matter", ["Footnote"] = "Footnote", ["LinkReference"] = "Link reference",
         ["Format"] = "Format", ["Strong"] = "Bold", ["Emphasis"] = "Italic", ["Underline"] = "Underline", ["InlineCode"] = "Inline code", ["InlineMath"] = "Inline math",
         ["Strikethrough"] = "Strikethrough", ["Highlight"] = "Highlight", ["Hyperlink"] = "Link", ["Image"] = "Image", ["ClearFormat"] = "Clear format",
-        ["View"] = "View", ["SourceCode"] = "Source code mode", ["FocusMode"] = "Focus mode", ["Typewriter"] = "Typewriter mode", ["ReadOnly"] = "Reading mode",
+        ["View"] = "View", ["NextTab"] = "Next tab", ["PreviousTab"] = "Previous tab", ["LastUsedTab"] = "Last used tab", ["FullScreen"] = "Full screen", ["CmdFullScreen"] = "Full screen", ["SourceCode"] = "Source code mode", ["FocusMode"] = "Focus mode", ["Typewriter"] = "Typewriter mode", ["ReadOnly"] = "Reading mode",
         ["SidePane"] = "Side pane", ["Theme"] = "Theme", ["ThemeSystem"] = "System", ["ThemeLight"] = "Light", ["ThemeDark"] = "Dark", ["ThemeBlack"] = "Black",
         ["Help"] = "Help", ["About"] = "About",
         ["Files"] = "Files", ["Outline"] = "Outline", ["Search"] = "Search", ["SearchPlaceholder"] = "Search in folder…", ["NoFolder"] = "No folder open",

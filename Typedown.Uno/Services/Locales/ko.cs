@@ -261,5 +261,8 @@ public static partial class LocaleTables
         ["ImportHtml"] = "HTML 가져오기…",
         ["ExportImage"] = "이미지로 내보내기…",
         ["ImageFailed"] = "이미지를 만들 수 없습니다.",
+        ["NextTab"] = "다음 탭",
+        ["PreviousTab"] = "이전 탭",
+        ["LastUsedTab"] = "마지막으로 사용한 탭",
     };
 }

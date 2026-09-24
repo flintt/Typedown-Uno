@@ -266,5 +266,8 @@ public static partial class LocaleTables
         ["ImportHtml"] = "导入 HTML…",
         ["ExportImage"] = "导出图片…",
         ["ImageFailed"] = "无法生成图片。",
+        ["NextTab"] = "下一个标签",
+        ["PreviousTab"] = "上一个标签",
+        ["LastUsedTab"] = "上次使用的标签",
     };
 }

@@ -261,5 +261,8 @@ public static partial class LocaleTables
         ["ImportHtml"] = "Importer du HTML…",
         ["ExportImage"] = "Exporter en image…",
         ["ImageFailed"] = "L'image n'a pas pu être créée.",
+        ["NextTab"] = "Onglet suivant",
+        ["PreviousTab"] = "Onglet précédent",
+        ["LastUsedTab"] = "Dernier onglet utilisé",
     };
 }
