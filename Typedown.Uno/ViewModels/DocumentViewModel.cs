@@ -118,6 +118,14 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
                 if (!applyingHistory) History.ContentChange(Markdown);
                 if (!Saved && settings.AutoSave && FilePath != null) ScheduleAutoSave();
                 break;
+            case "ContentFlushed":
+                {
+                    var token = args?["token"]?.GetValue<int>() ?? 0;
+                    TaskCompletionSource<bool>? waiter;
+                    lock (flushWaiters) flushWaiters.TryGetValue(token, out waiter);
+                    waiter?.TrySetResult(true);
+                    break;
+                }
             case "CursorChange":
                 if (IsStale(args) || !FileLoaded) return;
                 Cursor = args?["cursor"]?.DeepClone();
@@ -131,6 +139,29 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
                 ScrollTop = y;
                 if (settings.RememberPosition) CursorMemory.SetScroll(FilePath, y.Value);
                 break;
+        }
+    }
+
+    // The editor reports the text at most every 250 ms while typing, so anything that reads it as the document
+    // asks for it to be brought up to date first. The wait is bounded: if the page does not answer, what we
+    // already hold is written rather than nothing.
+    private int flushToken;
+    private readonly Dictionary<int, TaskCompletionSource<bool>> flushWaiters = new();
+
+    public async Task FlushContentAsync(int timeoutMs = 500)
+    {
+        if (!EditorReady || !FileLoaded) return;
+        var token = ++flushToken;
+        var waiter = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        lock (flushWaiters) flushWaiters[token] = waiter;
+        try
+        {
+            await transport.PostMessage("FlushContent", new { token });
+            await Task.WhenAny(waiter.Task, Task.Delay(timeoutMs));
+        }
+        finally
+        {
+            lock (flushWaiters) flushWaiters.Remove(token);
         }
     }
 
@@ -315,6 +346,7 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
     {
         try
         {
+            await FlushContentAsync(); // what we write must be what is on screen
             var text = Markdown;
             var hash = SafeFile.Hash(text);
             handlingExternalChange = true; // our own write must not look like an external change
