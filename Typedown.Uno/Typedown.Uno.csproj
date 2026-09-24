@@ -38,7 +38,9 @@
     <!-- App icon: the original Typedown logo instead of the template's placeholder. The sources live outside
          Assets/ because everything under Assets/Icons is also produced by Resizetizer (duplicate publish paths). -->
     <UnoIcon Remove="Assets/Icons/icon.svg" />
-    <UnoIcon Include="Icons/icon.png" ForegroundFile="Icons/icon_foreground.png" Color="#F3F3F3" ForegroundScale="0.7" />
+    <!-- The artwork already is the whole tile (a white card with the T). Putting it on a plate and shrinking
+         it to 70% made the Windows build's icon a card inside a card, unlike the native edition's. -->
+    <UnoIcon Include="Icons/icon.png" />
     <!-- A plain copy for the Linux desktop entry and the packages. -->
     <None Include="Icons/icon.png" Link="Assets/typedown.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <!-- The document that explains the theme format travels with the themes it describes. -->
