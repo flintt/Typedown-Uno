@@ -176,7 +176,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         // The folder is relative to the app directory (Uno's X11 WebView joins it onto the base directory),
         // so it must stay relative — an absolute path would be concatenated onto the base directory.
         core.SetVirtualHostNameToFolderMapping(EditorHost, "Assets/Editor", CoreWebView2HostResourceAccessKind.Allow);
-        core.NavigationCompleted += async (_, args) => { if (args.IsSuccess) { await PostShortcutMap(); await PostContextMenuStrings(); } };
+        core.NavigationCompleted += async (_, args) => { if (args.IsSuccess) { await PostShortcutMap(); await PostContextMenuStrings(); await PostFindStrings(); } };
         EditorView.Source = new Uri($"http://{EditorHost}/index.html");
         Services.Log.Write("navigating to the editor page");
 
@@ -278,6 +278,18 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         deleteCol = Loc.Get("DeleteColumn"),
     });
 
+    /// <summary>Labels for the find and replace bar, which the page draws for the same reason.</summary>
+    private Task PostFindStrings() => Post("FindStrings", new
+    {
+        find = Loc.Get("FindPlaceholder"),
+        replaceWith = Loc.Get("ReplaceWith"),
+        replace = Loc.Get("ReplaceAction"),
+        replaceAll = Loc.Get("ReplaceAll"),
+        previous = Loc.Get("FindPrevious"),
+        next = Loc.Get("FindNext"),
+        close = Loc.Get("Close"),
+    });
+
     /// <summary>Puts the clipboard's text through the editor's paste handler, as Ctrl+V would.</summary>
     private async Task PasteClipboardTextAsync()
     {
@@ -303,6 +315,23 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         catch (Exception ex)
         {
             Services.Log.Error("paste from clipboard", ex);
+        }
+    }
+
+    /// <summary>Paste with formatting dropped: the same clipboard text, handed over without its HTML.</summary>
+    private async Task PasteAsPlainTextAsync()
+    {
+        try
+        {
+            var view = Clipboard.GetContent();
+            if (view == null || !view.Contains(StandardDataFormats.Text)) return;
+            var text = await view.GetTextAsync();
+            if (string.IsNullOrEmpty(text)) return;
+            await Post("Paste", new { type = "pasteAsPlainText", text, html = (string?)null });
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Error("paste as plain text", ex);
         }
     }
 
@@ -772,9 +801,38 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         MainMenu.Items.Add(file);
 
         var edit = new MenuBarItem { Title = Loc.Get("Edit") };
+        // Undo lives in the shell: the editor rebuilds its own DOM, so the browser's undo cannot be used.
+        var undoItem = Item("Undo", async () => { if (document != null) await document.UndoAsync(); }, ShortcutCommand.Undo);
+        var redoItem = Item("Redo", async () => { if (document != null) await document.RedoAsync(); }, ShortcutCommand.Redo);
+        edit.Items.Add(undoItem);
+        edit.Items.Add(redoItem);
+        if (document != null)
+        {
+            void UpdateHistoryItems()
+            {
+                undoItem.IsEnabled = document.History.Undoable;
+                redoItem.IsEnabled = document.History.Redoable;
+            }
+            UpdateHistoryItems();
+            if (historyChangedHandler != null) document.HistoryChanged -= historyChangedHandler;
+            historyChangedHandler = () => DispatcherQueue.TryEnqueue(UpdateHistoryItems);
+            document.HistoryChanged += historyChangedHandler;
+        }
+        edit.Items.Add(new MenuFlyoutSeparator());
+        edit.Items.Add(Item("Cut", async () => await Post("Cut", new { type = "normal", copyInfo = (object?)null })));
+        edit.Items.Add(Item("Copy", async () => await Post("Copy", new { type = "normal", copyInfo = (object?)null })));
+        edit.Items.Add(Item("Paste", async () => await PasteClipboardTextAsync()));
+        edit.Items.Add(Item("PasteAsPlainText", async () => await PasteAsPlainTextAsync()));
+        edit.Items.Add(Item("DeleteSelection", async () => await Post("DeleteSelection", null)));
+        edit.Items.Add(new MenuFlyoutSeparator());
+        edit.Items.Add(Item("CopyAsPlainText", async () => await Post("Copy", new { type = "copyAsPlainText", copyInfo = (object?)null })));
+        edit.Items.Add(Item("CopyAsMarkdown", async () => await Post("Copy", new { type = "copyAsMarkdown", copyInfo = (object?)null })));
+        edit.Items.Add(Item("CopyAsHtml", async () => await Post("Copy", new { type = "copyAsHtml", copyInfo = (object?)null })));
+        edit.Items.Add(new MenuFlyoutSeparator());
         edit.Items.Add(Item("Find", () => ShowFind(true), ShortcutCommand.Find));
         edit.Items.Add(Item("FindNext", async () => await Post("Find", new { action = "next" }), ShortcutCommand.FindNext));
         edit.Items.Add(Item("FindPrevious", async () => await Post("Find", new { action = "prev" }), ShortcutCommand.FindPrevious));
+        edit.Items.Add(Item("Replace", () => ShowFind(true, replace: true), ShortcutCommand.Replace));
         edit.Items.Add(new MenuFlyoutSeparator());
         edit.Items.Add(Item("SearchInFolder", () => OnSearchButtonClick(this, new RoutedEventArgs()), ShortcutCommand.SearchInFolder));
         edit.Items.Add(new MenuFlyoutSeparator());
@@ -894,6 +952,8 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         help.Items.Add(Item("About", async () => await ShowAboutAsync()));
         MainMenu.Items.Add(help);
     }
+
+    private Action? historyChangedHandler;
 
     private MenuFlyoutItem Item(string key, Action action, ShortcutCommand? command = null)
     {
@@ -1309,7 +1369,8 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
 
     // ---- find (the bar itself lives in the page: uno-bridge.js) ------------------------------------------------
 
-    private void ShowFind(bool show, string? text = null) => _ = show ? Post("ShowFind", new { value = text, opt = SearchOptions() }) : Post("HideFind", null);
+    private void ShowFind(bool show, string? text = null, bool replace = false) =>
+        _ = show ? Post("ShowFind", new { value = text, opt = SearchOptions(), replace }) : Post("HideFind", null);
 
     /// <summary>Search options the in-page find bar passes to the editor (see Settings → Find).</summary>
     private object SearchOptions() => new

@@ -31,6 +31,7 @@ public sealed class DocumentTab : INotifyPropertyChanged
     public bool Saved { get; set; } = true;
     public bool FileLoaded { get; set; }
     public TextFileFormat? FileFormat { get; set; }
+    public ContentHistory? History { get; set; }
     public JsonNode? Cursor { get; set; }
     public double? ScrollTop { get; set; }
 

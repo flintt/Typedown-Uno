@@ -81,10 +81,20 @@
 
     // In-page find bar. Keyboard focus cannot be moved from the native web view to the host window on Linux/macOS,
     // so the find UI lives in the page and drives the editor's own Search/Find handlers directly.
-    var findBar = null, findInput = null, findCount = null;
-    // `selection` must be truthy or the editor ignores the search; an empty object means "from the start".
+    var findBar = null, findInput = null, findCount = null, findRow = null, replaceRow = null, replaceInput = null;
+    // Labels for the find bar; replaced by the host (see "FindStrings") in the interface language.
+    var findStrings = {
+        find: 'Find', replaceWith: 'Replace with', replace: 'Replace', replaceAll: 'Replace all',
+        previous: 'Previous (Shift+Enter)', next: 'Next (Enter)', close: 'Close (Esc)',
+    };
     var findOptions = { searchIsCaseSensitive: false, searchIsWholeWord: false, searchIsRegexp: false };
-    function searchOptions() { return Object.assign({ selection: {} }, findOptions); }
+    // "Find next" starts after the caret, so the editor needs to be told where it is; with no caret the search
+    // runs from the top of the document.
+    function searchOptions() {
+        var muya = window.__typedownMuya;
+        var cursor = muya && muya.contentState && muya.contentState.cursor;
+        return Object.assign({ selection: cursor || {} }, findOptions);
+    }
     function runSearch() {
         local('Search', { value: findInput.value, opt: searchOptions() });
         setTimeout(function () {
@@ -98,12 +108,16 @@
         if (findBar) return;
         findBar = document.createElement('div');
         findBar.id = 'uno-find-bar';
-        findBar.style.cssText = 'position:fixed;top:8px;right:24px;z-index:100000;display:none;align-items:center;gap:6px;padding:6px 8px;border-radius:6px;' +
+        findBar.style.cssText = 'position:fixed;top:8px;right:24px;z-index:100000;display:none;flex-direction:column;gap:6px;padding:6px 8px;border-radius:6px;' +
             'background:var(--floatBgColor);border:1px solid var(--floatBorderColor);box-shadow:var(--floatShadow);' +
             'font:13px system-ui,sans-serif;color:var(--editorColor);';
+        findRow = document.createElement('div');
+        findRow.style.cssText = 'display:flex;align-items:center;gap:6px;';
+        replaceRow = document.createElement('div');
+        replaceRow.style.cssText = 'display:none;align-items:center;gap:6px;';
         findInput = document.createElement('input');
         findInput.type = 'text';
-        findInput.placeholder = 'Find';
+        findInput.placeholder = findStrings.find;
         findInput.style.cssText = 'width:220px;padding:4px 6px;border:1px solid var(--floatBorderColor);border-radius:4px;' +
             'background:var(--inputBgColor);color:var(--editorColor);outline:none;';
         findCount = document.createElement('span');
@@ -113,25 +127,61 @@
             b.textContent = text; b.title = title;
             b.style.cssText = 'padding:2px 8px;border:1px solid var(--floatBorderColor);border-radius:4px;' +
                 'background:var(--itemBgColor);color:var(--editorColor);cursor:pointer;';
+            b.tabIndex = -1; // Tab moves between the two text fields, not through the buttons
             b.addEventListener('click', function (e) { e.preventDefault(); onClick(); });
             return b;
         }
-        findBar.appendChild(findInput);
-        findBar.appendChild(findCount);
-        findBar.appendChild(button('\u2191', 'Previous (Shift+Enter)', function () { local('Find', { action: 'prev' }); }));
-        findBar.appendChild(button('\u2193', 'Next (Enter)', function () { local('Find', { action: 'next' }); }));
-        findBar.appendChild(button('\u2715', 'Close (Esc)', hideFind));
+        replaceInput = document.createElement('input');
+        replaceInput.type = 'text';
+        replaceInput.placeholder = findStrings.replaceWith;
+        replaceInput.style.cssText = findInput.style.cssText;
+        findRow.appendChild(findInput);
+        findRow.appendChild(findCount);
+        findRow.appendChild(button('\u2191', findStrings.previous, function () { local('Find', { action: 'prev' }); }));
+        findRow.appendChild(button('\u2193', findStrings.next, function () { local('Find', { action: 'next' }); }));
+        findRow.appendChild(button('\u21c4', findStrings.replace, toggleReplace));
+        findRow.appendChild(button('\u2715', findStrings.close, hideFind));
+        replaceRow.appendChild(replaceInput);
+        replaceRow.appendChild(button(findStrings.replace, findStrings.replace, function () { runReplace(false); }));
+        replaceRow.appendChild(button(findStrings.replaceAll, findStrings.replaceAll, function () { runReplace(true); }));
+        replaceInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); runReplace(e.ctrlKey || e.metaKey); }
+            else if (e.key === 'Escape') { e.preventDefault(); hideFind(); }
+            else if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); findInput.focus(); }
+            e.stopPropagation();
+        });
+        findBar.appendChild(findRow);
+        findBar.appendChild(replaceRow);
         findInput.addEventListener('input', runSearch);
         findInput.addEventListener('keydown', function (e) {
             if (e.key === 'Enter') { e.preventDefault(); local('Find', { action: e.shiftKey ? 'prev' : 'next' }); }
             else if (e.key === 'Escape') { e.preventDefault(); hideFind(); }
+            else if (e.key === 'Tab' && !e.shiftKey && replaceRow.style.display !== 'none') { e.preventDefault(); replaceInput.focus(); }
             e.stopPropagation();
         });
         document.body.appendChild(findBar);
     }
-    function showFind(value) {
+    // Replacing works off the current search: the editor replaces what the last Search call matched, so the
+    // search is re-run before and after, otherwise "replace all" would work from a stale set of matches.
+    function runReplace(all) {
+        if (isReadOnly()) return;
+        runSearch();
+        setTimeout(function () {
+            local('Replace', { value: replaceInput.value, opt: Object.assign(searchOptions(), { isSingle: !all }) });
+            setTimeout(runSearch, 60);
+        }, 60);
+    }
+
+    function toggleReplace(show) {
+        var on = typeof show === 'boolean' ? show : replaceRow.style.display === 'none';
+        replaceRow.style.display = on ? 'flex' : 'none';
+        if (on) replaceInput.focus();
+    }
+
+    function showFind(value, replace) {
         ensureFindBar();
         findBar.style.display = 'flex';
+        toggleReplace(!!replace);
         if (typeof value === 'string') findInput.value = value;
         local('SearchOpenChange', { open: 1 });
         findInput.focus();
@@ -481,12 +531,18 @@
                 return;
             }
             if (msg && msg.name === 'ContextMenuStrings') { menuStrings = Object.assign(menuStrings, msg.args || {}); return; }
+            if (msg && msg.name === 'FindStrings') {
+                findStrings = Object.assign(findStrings, msg.args || {});
+                if (findInput) findInput.placeholder = findStrings.find;
+                if (replaceInput) replaceInput.placeholder = findStrings.replaceWith;
+                return;
+            }
             if (msg && msg.name === 'ShowFloat') {
                 var handler = floatHandlers[msg.args && msg.args.kind];
                 if (handler) handler((msg.args && msg.args.args) || {});
                 return;
             }
-            if (msg && msg.name === 'ShowFind') { if (msg.args && msg.args.opt) findOptions = msg.args.opt; showFind(msg.args && msg.args.value); return; }
+            if (msg && msg.name === 'ShowFind') { if (msg.args && msg.args.opt) findOptions = msg.args.opt; showFind(msg.args && msg.args.value, msg.args && msg.args.replace); return; }
             if (msg && msg.name === 'HideFind') { hideFind(); return; }
         } catch (e) { }
         deliver(data);

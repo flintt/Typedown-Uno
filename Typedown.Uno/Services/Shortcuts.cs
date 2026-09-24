@@ -7,7 +7,7 @@ namespace Typedown.Uno.Services;
 public enum ShortcutCommand
 {
     NewTab, NewWindow, Open, OpenFolder, Save, SaveAs, ExportHtml, Print, ShareHedgeDoc, Settings, CloseTab, Exit,
-    Find, FindNext, FindPrevious, SearchInFolder, SelectAll,
+    Undo, Redo, Find, FindNext, FindPrevious, Replace, SearchInFolder, SelectAll,
     NextTab, PreviousTab, SidePane, ReadingMode, SourceCode, InsertImage,
 }
 
@@ -99,9 +99,12 @@ public sealed class ShortcutMap
         [ShortcutCommand.Settings] = Shortcut.Parse("Ctrl+,"),
         [ShortcutCommand.CloseTab] = Shortcut.Parse("Ctrl+W"),
         [ShortcutCommand.Exit] = Shortcut.Parse("Ctrl+Q"),
+        [ShortcutCommand.Undo] = Shortcut.Parse("Ctrl+Z"),
+        [ShortcutCommand.Redo] = Shortcut.Parse("Ctrl+Y"),
         [ShortcutCommand.Find] = Shortcut.Parse("Ctrl+F"),
         [ShortcutCommand.FindNext] = Shortcut.Parse("F3"),
         [ShortcutCommand.FindPrevious] = Shortcut.Parse("Shift+F3"),
+        [ShortcutCommand.Replace] = Shortcut.Parse("Ctrl+H"),
         [ShortcutCommand.SearchInFolder] = Shortcut.Parse("Ctrl+Shift+F"),
         [ShortcutCommand.SelectAll] = Shortcut.Parse("Ctrl+A"),
         [ShortcutCommand.NextTab] = Shortcut.Parse("Ctrl+Tab"),

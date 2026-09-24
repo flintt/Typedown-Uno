@@ -44,6 +44,22 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
     /// <summary>The byte shape the open file was read in; a save puts it back rather than imposing our own.</summary>
     public TextFileFormat FileFormat { get; private set; } = TextFileFormat.Default;
 
+    /// <summary>Undo steps for the document in front of the user; each tab keeps its own.</summary>
+    public ContentHistory History { get; private set; } = new();
+
+    /// <summary>Raised whenever undo or redo becomes possible or impossible, including after a tab switch.</summary>
+    public event Action? HistoryChanged;
+
+    private void SetHistory(ContentHistory history)
+    {
+        History.Changed -= OnHistoryChanged;
+        History = history;
+        History.Changed += OnHistoryChanged;
+        OnHistoryChanged();
+    }
+
+    private void OnHistoryChanged() => HistoryChanged?.Invoke();
+
     private bool saved = true;
     public bool Saved { get => saved; private set { if (saved == value) return; saved = value; OnPropertyChanged(); OnPropertyChanged(nameof(Title)); } }
 
@@ -69,6 +85,7 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
         this.ui = ui;
         this.settings = settings;
         transport.MessageReceived += OnEditorMessage;
+        History.Changed += OnHistoryChanged;
     }
 
     // ---- editor reports -------------------------------------------------------------------------------------
@@ -91,17 +108,20 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
                 Markdown = text;
                 CurrentHash = FileHash;
                 Saved = true;
+                History.Init(text);
                 break;
             case "MarkdownChange":
                 if (IsStale(args)) return;
                 Markdown = args?["text"]?.GetValue<string>() ?? Markdown;
                 CurrentHash = SafeFile.Hash(Markdown);
                 Saved = FileHash == CurrentHash;
+                if (!applyingHistory) History.ContentChange(Markdown);
                 if (!Saved && settings.AutoSave && FilePath != null) ScheduleAutoSave();
                 break;
             case "CursorChange":
                 if (IsStale(args) || !FileLoaded) return;
                 Cursor = args?["cursor"]?.DeepClone();
+                if (!applyingHistory) History.CursorChange(Cursor);
                 if (settings.RememberPosition) CursorMemory.SetCursor(FilePath, Cursor);
                 break;
             case "OnScroll":
@@ -111,6 +131,36 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
                 ScrollTop = y;
                 if (settings.RememberPosition) CursorMemory.SetScroll(FilePath, y.Value);
                 break;
+        }
+    }
+
+    private bool applyingHistory;
+
+    public Task<bool> UndoAsync() => ApplyHistoryAsync(History.Undo());
+
+    public Task<bool> RedoAsync() => ApplyHistoryAsync(History.Redo());
+
+    /// <summary>
+    /// Puts a remembered state back into the editor. The editor reports the change straight back to us, which
+    /// would otherwise be recorded as a new step and make undo impossible to get out of, hence the flag.
+    /// </summary>
+    private async Task<bool> ApplyHistoryAsync(HistoryEntry? entry)
+    {
+        if (entry?.Text == null) return false;
+        applyingHistory = true;
+        try
+        {
+            Markdown = entry.Text;
+            CurrentHash = SafeFile.Hash(Markdown);
+            Saved = FileHash == CurrentHash;
+            Cursor = entry.Cursor?.DeepClone();
+            await transport.PostMessage("SetMarkdown", new { text = entry.Text, cursor = entry.Cursor, basePath = BasePath });
+            if (!Saved && settings.AutoSave && FilePath != null) ScheduleAutoSave();
+            return true;
+        }
+        finally
+        {
+            applyingHistory = false;
         }
     }
 
@@ -163,6 +213,7 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
     {
         tab.FilePath = FilePath;
         tab.FileFormat = FileFormat;
+        tab.History = History;
         tab.Markdown = Markdown;
         tab.FileHash = FileHash;
         tab.CurrentHash = CurrentHash;
@@ -179,6 +230,7 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
         StopWatching();
         FilePath = tab.FilePath;
         FileFormat = tab.FileFormat ?? TextFileFormat.Default;
+        SetHistory(tab.History ??= new ContentHistory());
         Markdown = tab.Markdown;
         FileHash = tab.FileHash;
         CurrentHash = tab.CurrentHash;
