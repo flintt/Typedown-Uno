@@ -41,6 +41,9 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
     private string? filePath;
     public string? FilePath { get => filePath; private set { filePath = value; OnPropertyChanged(); OnPropertyChanged(nameof(Title)); OnPropertyChanged(nameof(FileName)); } }
 
+    /// <summary>The byte shape the open file was read in; a save puts it back rather than imposing our own.</summary>
+    public TextFileFormat FileFormat { get; private set; } = TextFileFormat.Default;
+
     private bool saved = true;
     public bool Saved { get => saved; private set { if (saved == value) return; saved = value; OnPropertyChanged(); OnPropertyChanged(nameof(Title)); } }
 
@@ -159,6 +162,7 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
     public void Capture(DocumentTab tab)
     {
         tab.FilePath = FilePath;
+        tab.FileFormat = FileFormat;
         tab.Markdown = Markdown;
         tab.FileHash = FileHash;
         tab.CurrentHash = CurrentHash;
@@ -174,6 +178,7 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
     {
         StopWatching();
         FilePath = tab.FilePath;
+        FileFormat = tab.FileFormat ?? TextFileFormat.Default;
         Markdown = tab.Markdown;
         FileHash = tab.FileHash;
         CurrentHash = tab.CurrentHash;
@@ -196,6 +201,7 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
     {
         StopWatching();
         FilePath = null;
+        FileFormat = TextFileFormat.Default;
         Markdown = DefaultMarkdown;
         FileHash = CurrentHash = SafeFile.Hash(DefaultMarkdown);
         DiskHash = 0;
@@ -213,7 +219,8 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
         try
         {
             if (!File.Exists(path)) throw new FileNotFoundException(Loc.Get("CannotOpen"), path);
-            var text = await File.ReadAllTextAsync(path);
+            var (text, format) = await TextFileFormat.ReadAsync(path);
+            FileFormat = format;
             StopWatching();
             FilePath = Path.GetFullPath(path);
             Markdown = text;
@@ -259,7 +266,7 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
             var text = Markdown;
             var hash = SafeFile.Hash(text);
             handlingExternalChange = true; // our own write must not look like an external change
-            await SafeFile.WriteAllTextAtomicAsync(path, text);
+            await SafeFile.WriteAllBytesAtomicAsync(path, (FileFormat ?? TextFileFormat.Default).GetBytes(text));
             FileHash = hash;
             DiskHash = hash;
             Saved = CurrentHash == hash;
@@ -334,7 +341,9 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
         {
             if (!File.Exists(FilePath)) return;
             string text;
-            try { text = await File.ReadAllTextAsync(FilePath); } catch { return; }
+            TextFileFormat format;
+            try { (text, format) = await TextFileFormat.ReadAsync(FilePath); } catch { return; }
+            FileFormat = format; // whoever wrote it last decides the shape from now on
             var diskHash = SafeFile.Hash(text);
             if (diskHash == DiskHash || diskHash == FileHash) return; // nothing really changed
             if (Saved || settings.AutoReload)

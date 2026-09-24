@@ -7,16 +7,18 @@ public static class SafeFile
 {
     public static readonly Encoding Utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 
-    public static async Task WriteAllTextAtomicAsync(string path, string text, Encoding? encoding = null)
+    public static Task WriteAllTextAtomicAsync(string path, string text, Encoding? encoding = null)
+        => WriteAllBytesAtomicAsync(path, (encoding ?? Utf8NoBom).GetBytes(text));
+
+    /// <summary>The same atomic write for content whose bytes the caller has already decided on.</summary>
+    public static async Task WriteAllBytesAtomicAsync(string path, byte[] bytes)
     {
-        encoding ??= Utf8NoBom;
         var directory = Path.GetDirectoryName(path);
         var tempPath = Path.Combine(string.IsNullOrEmpty(directory) ? "." : directory, $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
         try
         {
             await using (var stream = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.Asynchronous))
             {
-                var bytes = encoding.GetBytes(text);
                 await stream.WriteAsync(bytes);
                 stream.Flush(flushToDisk: true);
             }

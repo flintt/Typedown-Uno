@@ -30,6 +30,7 @@ public sealed class DocumentTab : INotifyPropertyChanged
     public ulong DiskHash { get; set; }
     public bool Saved { get; set; } = true;
     public bool FileLoaded { get; set; }
+    public TextFileFormat? FileFormat { get; set; }
     public JsonNode? Cursor { get; set; }
     public double? ScrollTop { get; set; }
 
