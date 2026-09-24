@@ -16,7 +16,7 @@ public static class Loc
         ["CopyAsMarkdown"] = "Copy as Markdown", ["CopyAsHtml"] = "Copy as HTML", ["Replace"] = "Replace…",
         ["CmdUndo"] = "Undo", ["CmdRedo"] = "Redo", ["CmdReplace"] = "Replace",
         ["ReplaceWith"] = "Replace with", ["ReplaceAction"] = "Replace", ["ReplaceAll"] = "Replace all",
-        ["ExportPdf"] = "Export PDF…", ["CmdExportPdf"] = "Export PDF", ["Exporting"] = "Exporting…",
+        ["ExportPdf"] = "Export PDF…", ["ImportHtml"] = "Import HTML…", ["CmdExportPdf"] = "Export PDF", ["Exporting"] = "Exporting…",
         ["PdfFailed"] = "The PDF could not be written.", ["PdfUnavailable"] = "PDF export needs WebKitGTK, which is not available here.",
         ["Paragraph"] = "Paragraph", ["Heading"] = "Heading", ["HeadingN"] = "Heading {0}", ["ParagraphPlain"] = "Paragraph", ["IncreaseHeading"] = "Increase heading level",
         ["DecreaseHeading"] = "Decrease heading level", ["Table"] = "Table…", ["CodeFences"] = "Code fences", ["MathBlock"] = "Math block", ["Quote"] = "Quote",

@@ -258,5 +258,6 @@ public static partial class LocaleTables
         ["Exporting"] = "A exportar…",
         ["PdfFailed"] = "Não foi possível criar o PDF.",
         ["PdfUnavailable"] = "A exportação para PDF precisa do WebKitGTK, que não está disponível aqui.",
+        ["ImportHtml"] = "Importar HTML…",
     };
 }

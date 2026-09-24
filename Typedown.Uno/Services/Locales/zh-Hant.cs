@@ -263,5 +263,6 @@ public static partial class LocaleTables
         ["Exporting"] = "正在匯出…",
         ["PdfFailed"] = "無法產生 PDF。",
         ["PdfUnavailable"] = "匯出 PDF 需要 WebKitGTK，目前系統不可用。",
+        ["ImportHtml"] = "匯入 HTML…",
     };
 }

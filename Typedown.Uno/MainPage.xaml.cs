@@ -797,6 +797,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         file.Items.Add(new MenuFlyoutSeparator());
         file.Items.Add(Item("Save", async () => { if (document != null) await document.SaveAsync(); }, ShortcutCommand.Save));
         file.Items.Add(Item("SaveAs", async () => { if (document != null) await document.SaveAsAsync(); }, ShortcutCommand.SaveAs));
+        file.Items.Add(Item("ImportHtml", async () => await ImportHtmlAsync()));
         file.Items.Add(Item("ExportHtml", async () => await ExportHtmlAsync(), ShortcutCommand.ExportHtml));
         file.Items.Add(Item("ExportPdf", async () => await ExportPdfAsync(), ShortcutCommand.ExportPdf));
         file.Items.Add(Item("PrintPdf", async () => await PrintAsync(), ShortcutCommand.Print));
@@ -1675,6 +1676,36 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         var dialog = new ContentDialog { Title = Loc.Get("Table"), Content = new StackPanel { Spacing = 8, Children = { rows, cols } }, PrimaryButtonText = Loc.Get("OK"), CloseButtonText = Loc.Get("Cancel"), XamlRoot = XamlRoot, RequestedTheme = DialogTheme };
         if (await dialog.ShowAsync() == ContentDialogResult.Primary)
             await Post("InsertTable", new { rows = (int)rows.Value, columns = (int)cols.Value });
+    }
+
+    /// <summary>
+    /// Reads an HTML file and hands it to the editor, which turns it into Markdown and puts it in the current
+    /// document as an ordinary edit — so it can be undone and has to be saved.
+    /// </summary>
+    private async Task ImportHtmlAsync()
+    {
+        if (document == null) return;
+        string? path;
+        if (UseBuiltInPicker)
+            path = await ShowBuiltInPickerAsync(FilePickerDialog.PickerMode.OpenFile, null, new[] { ".html", ".htm" });
+        else
+        {
+            var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
+            picker.FileTypeFilter.Add(".html");
+            picker.FileTypeFilter.Add(".htm");
+            InitPicker(picker);
+            path = (await picker.PickSingleFileAsync())?.Path;
+        }
+        if (path == null) return;
+        try
+        {
+            var text = await File.ReadAllTextAsync(path);
+            await Post("ImportFile", new { type = "html", text });
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync(Loc.Get("ImportHtml"), ex.Message);
+        }
     }
 
     private async Task ExportHtmlAsync()
