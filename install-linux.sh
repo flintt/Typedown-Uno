@@ -29,7 +29,10 @@ exec /opt/typedown-uno/Typedown.Uno "$@"
 EOF
 chmod +x /usr/local/bin/typedown
 
-icon=$(ls /opt/typedown-uno/Assets/Icons/*.png 2>/dev/null | sort | tail -1)
+# The plain artwork, the same file the deb and the AppImage install; the generated Assets/Icons set is only
+# a fallback, and picking from it alphabetically can land on a 16px variant.
+icon=/opt/typedown-uno/Assets/typedown.png
+[ -f "$icon" ] || icon=$(ls /opt/typedown-uno/Assets/Icons/icon.scale-400.png /opt/typedown-uno/Assets/Icons/icon.png 2>/dev/null | head -1)
 cat > /usr/share/applications/typedown-uno.desktop <<EOF
 [Desktop Entry]
 Type=Application
