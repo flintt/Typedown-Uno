@@ -69,6 +69,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         transport = new EditorTransport(PostToEditor);
         document = new DocumentViewModel(transport, this, settings);
         tabs = new TabsViewModel(document, settings);
+        WireHistoryItems(); // the menus were built before the document existed
         document.PropertyChanged += (_, e) => DispatcherQueue.TryEnqueue(() =>
         {
             UpdateTitle();
@@ -802,22 +803,11 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
 
         var edit = new MenuBarItem { Title = Loc.Get("Edit") };
         // Undo lives in the shell: the editor rebuilds its own DOM, so the browser's undo cannot be used.
-        var undoItem = Item("Undo", async () => { if (document != null) await document.UndoAsync(); }, ShortcutCommand.Undo);
-        var redoItem = Item("Redo", async () => { if (document != null) await document.RedoAsync(); }, ShortcutCommand.Redo);
-        edit.Items.Add(undoItem);
-        edit.Items.Add(redoItem);
-        if (document != null)
-        {
-            void UpdateHistoryItems()
-            {
-                undoItem.IsEnabled = document.History.Undoable;
-                redoItem.IsEnabled = document.History.Redoable;
-            }
-            UpdateHistoryItems();
-            if (historyChangedHandler != null) document.HistoryChanged -= historyChangedHandler;
-            historyChangedHandler = () => DispatcherQueue.TryEnqueue(UpdateHistoryItems);
-            document.HistoryChanged += historyChangedHandler;
-        }
+        undoMenuItem = Item("Undo", async () => { if (document != null) await document.UndoAsync(); }, ShortcutCommand.Undo);
+        redoMenuItem = Item("Redo", async () => { if (document != null) await document.RedoAsync(); }, ShortcutCommand.Redo);
+        edit.Items.Add(undoMenuItem);
+        edit.Items.Add(redoMenuItem);
+        WireHistoryItems();
         edit.Items.Add(new MenuFlyoutSeparator());
         edit.Items.Add(Item("Cut", async () => await Post("Cut", new { type = "normal", copyInfo = (object?)null })));
         edit.Items.Add(Item("Copy", async () => await Post("Copy", new { type = "normal", copyInfo = (object?)null })));
@@ -954,6 +944,26 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     }
 
     private Action? historyChangedHandler;
+    private MenuFlyoutItem? undoMenuItem;
+    private MenuFlyoutItem? redoMenuItem;
+
+    /// <summary>
+    /// Greys out undo and redo when there is nothing to undo or redo. The menus are built before the document
+    /// exists, so this is called again once it does, and on every rebuild after a language change.
+    /// </summary>
+    private void WireHistoryItems()
+    {
+        if (document == null || undoMenuItem == null || redoMenuItem == null) return;
+        void Update()
+        {
+            undoMenuItem.IsEnabled = document.History.Undoable;
+            redoMenuItem.IsEnabled = document.History.Redoable;
+        }
+        Update();
+        if (historyChangedHandler != null) document.HistoryChanged -= historyChangedHandler;
+        historyChangedHandler = () => DispatcherQueue.TryEnqueue(Update);
+        document.HistoryChanged += historyChangedHandler;
+    }
 
     private MenuFlyoutItem Item(string key, Action action, ShortcutCommand? command = null)
     {
