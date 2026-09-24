@@ -18,6 +18,9 @@ env:
 jobs:
   build:
     name: ${{ matrix.name }}
+    # A release pushes the version bump to main and then the tag, which used to start the same build twice.
+    # The tag run is the one that publishes, so the branch run for a version commit is skipped.
+    if: github.ref_type == 'tag' || !startsWith(github.event.head_commit.message, 'Version ')
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
