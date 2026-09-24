@@ -383,11 +383,16 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             if (path != null)
             {
                 await SafeFile.WriteAllTextAtomicAsync(path, html);
-                if (path == printAfterExport)
+                // Exports that are a step towards something else (a PDF, the print dialog) say so by leaving a
+                // continuation behind; a plain "Export HTML" has none and just reports where the file went.
+                Func<string, Task>? next = null;
+                lock (exportContinuations)
                 {
-                    printAfterExport = null;
-                    OpenPath(path); // the browser's print dialog does the printing / "save as PDF"
-                    SetStatus(Loc.Get("PrintOpened"));
+                    if (exportContinuations.TryGetValue(path, out var found)) { next = found; exportContinuations.Remove(path); }
+                }
+                if (next != null)
+                {
+                    await next(path);
                 }
                 else
                 {
@@ -793,6 +798,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         file.Items.Add(Item("Save", async () => { if (document != null) await document.SaveAsync(); }, ShortcutCommand.Save));
         file.Items.Add(Item("SaveAs", async () => { if (document != null) await document.SaveAsAsync(); }, ShortcutCommand.SaveAs));
         file.Items.Add(Item("ExportHtml", async () => await ExportHtmlAsync(), ShortcutCommand.ExportHtml));
+        file.Items.Add(Item("ExportPdf", async () => await ExportPdfAsync(), ShortcutCommand.ExportPdf));
         file.Items.Add(Item("PrintPdf", async () => await PrintAsync(), ShortcutCommand.Print));
         file.Items.Add(Item("ShareHedgeDoc", async () => await ShareToHedgeDocAsync(), ShortcutCommand.ShareHedgeDoc));
         file.Items.Add(new MenuFlyoutSeparator());
@@ -1691,19 +1697,69 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         await Post("Export", new { type = "html", context = new { filePath = path }, basePath = document.BasePath, title = Path.GetFileNameWithoutExtension(document.FileName), options = new { } });
     }
 
+    private readonly Dictionary<string, Func<string, Task>> exportContinuations = new();
+
+    /// <summary>Renders the document to a temporary HTML file and then does something else with it.</summary>
+    private async Task ExportThroughHtmlAsync(Func<string, Task> then)
+    {
+        if (document == null) return;
+        var path = Path.Combine(Path.GetTempPath(), $"typedown-export-{Guid.NewGuid():N}.html");
+        lock (exportContinuations) exportContinuations[path] = then;
+        await Post("Export", new { type = "html", context = new { filePath = path, print = true }, basePath = document.BasePath, title = Path.GetFileNameWithoutExtension(document.FileName), options = new { } });
+    }
+
+    /// <summary>Writes the document to a PDF through WebKitGTK's printer, with no dialog in the way.</summary>
+    private async Task ExportPdfAsync()
+    {
+        if (document == null) return;
+        var suggested = Path.GetFileNameWithoutExtension(document.FileName) + ".pdf";
+        string? target;
+        if (UseBuiltInPicker)
+            target = await ShowBuiltInPickerAsync(FilePickerDialog.PickerMode.SaveFile, suggested, new[] { ".pdf" });
+        else
+            target = await PickSaveFileAsync(suggested);
+        if (target == null) return;
+        if (!target.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)) target += ".pdf";
+        if (!WebKitPrint.Available)
+        {
+            await ShowErrorAsync(Loc.Get("ExportPdf"), Loc.Get("PdfUnavailable"));
+            return;
+        }
+        SetStatus(Loc.Get("Exporting"));
+        await ExportThroughHtmlAsync(async html =>
+        {
+            var ok = await WebKitPrint.ExportPdfAsync(html, target!);
+            try { File.Delete(html); } catch { }
+            if (ok)
+            {
+                SetStatus(Loc.Format("Exported", target!));
+                if (settings.OpenFolderAfterExport) OpenContainingFolder(target!);
+            }
+            else
+            {
+                await ShowErrorAsync(Loc.Get("ExportPdf"), Loc.Get("PdfFailed"));
+            }
+        });
+    }
+
     /// <summary>
-    /// Renders the document to a temporary HTML file and opens it in the default browser, where the system print
-    /// dialog prints it or saves it as PDF (WebKitGTK's print API is not exposed through Uno).
+    /// Prints through WebKitGTK's own print dialog. Where that is not available the document is opened in the
+    /// browser instead, whose print dialog can do the same job.
     /// </summary>
     private async Task PrintAsync()
     {
         if (document == null) return;
-        var path = Path.Combine(Path.GetTempPath(), $"typedown-print-{Guid.NewGuid():N}.html");
-        printAfterExport = path;
-        await Post("Export", new { type = "html", context = new { filePath = path, print = true }, basePath = document.BasePath, title = Path.GetFileNameWithoutExtension(document.FileName), options = new { } });
+        await ExportThroughHtmlAsync(async html =>
+        {
+            if (WebKitPrint.Available && await WebKitPrint.PrintAsync(html))
+            {
+                try { File.Delete(html); } catch { }
+                return;
+            }
+            OpenPath(html); // the browser's print dialog does the printing / "save as PDF"
+            SetStatus(Loc.Get("PrintOpened"));
+        });
     }
-
-    private string? printAfterExport;
 
     private async Task ShareToHedgeDocAsync()
     {

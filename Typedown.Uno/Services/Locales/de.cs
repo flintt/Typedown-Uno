@@ -137,7 +137,7 @@ public static partial class LocaleTables
         ["TestConnection"] = "Verbindung testen",
         ["Test"] = "Testen",
         ["InsertImage"] = "Bild einfügen…",
-        ["PrintPdf"] = "Drucken / PDF exportieren…",
+        ["PrintPdf"] = "Drucken…",
         ["PrintOpened"] = "Im Browser geöffnet – über dessen Druckdialog als PDF speichern",
         ["NewFileHere"] = "Neue Datei hier",
         ["NewFolderHere"] = "Neuer Ordner hier",
@@ -167,7 +167,7 @@ public static partial class LocaleTables
         ["CmdSave"] = "Speichern",
         ["CmdSaveAs"] = "Speichern unter",
         ["CmdExportHtml"] = "HTML exportieren",
-        ["CmdPrint"] = "Drucken / PDF exportieren",
+        ["CmdPrint"] = "Drucken",
         ["CmdShareHedgeDoc"] = "Auf HedgeDoc teilen",
         ["CmdSettings"] = "Einstellungen",
         ["CmdCloseTab"] = "Tab schließen",
@@ -253,5 +253,10 @@ public static partial class LocaleTables
         ["CmdUndo"] = "Rückgängig",
         ["CmdRedo"] = "Wiederholen",
         ["CmdReplace"] = "Ersetzen",
+        ["ExportPdf"] = "Als PDF exportieren…",
+        ["CmdExportPdf"] = "Als PDF exportieren",
+        ["Exporting"] = "Wird exportiert…",
+        ["PdfFailed"] = "Das PDF konnte nicht erstellt werden.",
+        ["PdfUnavailable"] = "Der PDF-Export benötigt WebKitGTK, das hier nicht verfügbar ist.",
     };
 }

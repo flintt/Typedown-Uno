@@ -137,7 +137,7 @@ public static partial class LocaleTables
         ["TestConnection"] = "接続テスト",
         ["Test"] = "テスト",
         ["InsertImage"] = "画像を挿入…",
-        ["PrintPdf"] = "印刷 / PDF に出力…",
+        ["PrintPdf"] = "印刷…",
         ["PrintOpened"] = "ブラウザーで開きました。印刷ダイアログから PDF として保存してください",
         ["NewFileHere"] = "ここに新規ファイル",
         ["NewFolderHere"] = "ここに新規フォルダー",
@@ -167,7 +167,7 @@ public static partial class LocaleTables
         ["CmdSave"] = "保存",
         ["CmdSaveAs"] = "名前を付けて保存",
         ["CmdExportHtml"] = "HTML をエクスポート",
-        ["CmdPrint"] = "印刷 / PDF に出力",
+        ["CmdPrint"] = "印刷",
         ["CmdShareHedgeDoc"] = "HedgeDoc で共有",
         ["CmdSettings"] = "設定",
         ["CmdCloseTab"] = "タブを閉じる",
@@ -253,5 +253,10 @@ public static partial class LocaleTables
         ["CmdUndo"] = "元に戻す",
         ["CmdRedo"] = "やり直し",
         ["CmdReplace"] = "置換",
+        ["ExportPdf"] = "PDF に書き出す…",
+        ["CmdExportPdf"] = "PDF に書き出す",
+        ["Exporting"] = "書き出し中…",
+        ["PdfFailed"] = "PDF を作成できませんでした。",
+        ["PdfUnavailable"] = "PDF の書き出しには WebKitGTK が必要ですが、この環境では利用できません。",
     };
 }

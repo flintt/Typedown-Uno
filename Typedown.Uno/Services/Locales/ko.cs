@@ -137,7 +137,7 @@ public static partial class LocaleTables
         ["TestConnection"] = "연결 테스트",
         ["Test"] = "테스트",
         ["InsertImage"] = "이미지 삽입…",
-        ["PrintPdf"] = "인쇄 / PDF로 내보내기…",
+        ["PrintPdf"] = "인쇄…",
         ["PrintOpened"] = "브라우저에서 열었습니다. 인쇄 대화 상자에서 PDF로 저장하세요",
         ["NewFileHere"] = "여기에 새 파일",
         ["NewFolderHere"] = "여기에 새 폴더",
@@ -167,7 +167,7 @@ public static partial class LocaleTables
         ["CmdSave"] = "저장",
         ["CmdSaveAs"] = "다른 이름으로 저장",
         ["CmdExportHtml"] = "HTML 내보내기",
-        ["CmdPrint"] = "인쇄 / PDF로 내보내기",
+        ["CmdPrint"] = "인쇄",
         ["CmdShareHedgeDoc"] = "HedgeDoc으로 공유",
         ["CmdSettings"] = "설정",
         ["CmdCloseTab"] = "탭 닫기",
@@ -253,5 +253,10 @@ public static partial class LocaleTables
         ["CmdUndo"] = "실행 취소",
         ["CmdRedo"] = "다시 실행",
         ["CmdReplace"] = "바꾸기",
+        ["ExportPdf"] = "PDF로 내보내기…",
+        ["CmdExportPdf"] = "PDF로 내보내기",
+        ["Exporting"] = "내보내는 중…",
+        ["PdfFailed"] = "PDF를 만들 수 없습니다.",
+        ["PdfUnavailable"] = "PDF 내보내기에는 WebKitGTK가 필요하지만 이 환경에서는 사용할 수 없습니다.",
     };
 }

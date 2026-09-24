@@ -141,7 +141,7 @@ public static partial class LocaleTables
         ["TestConnection"] = "测试连接",
         ["Test"] = "测试",
         ["InsertImage"] = "插入图片…",
-        ["PrintPdf"] = "打印 / 导出 PDF…",
+        ["PrintPdf"] = "打印…",
         ["PrintOpened"] = "已在浏览器中打开，用浏览器的打印功能保存为 PDF",
         ["NewFileHere"] = "在此新建文件",
         ["NewFolderHere"] = "在此新建文件夹",
@@ -171,7 +171,7 @@ public static partial class LocaleTables
         ["CmdSave"] = "保存",
         ["CmdSaveAs"] = "另存为",
         ["CmdExportHtml"] = "导出 HTML",
-        ["CmdPrint"] = "打印 / 导出 PDF",
+        ["CmdPrint"] = "打印",
         ["CmdShareHedgeDoc"] = "分享到 HedgeDoc",
         ["CmdSettings"] = "设置",
         ["CmdCloseTab"] = "关闭标签",
@@ -258,5 +258,10 @@ public static partial class LocaleTables
         ["CmdUndo"] = "撤销",
         ["CmdRedo"] = "重做",
         ["CmdReplace"] = "替换",
+        ["ExportPdf"] = "导出 PDF…",
+        ["CmdExportPdf"] = "导出 PDF",
+        ["Exporting"] = "正在导出…",
+        ["PdfFailed"] = "无法生成 PDF。",
+        ["PdfUnavailable"] = "导出 PDF 需要 WebKitGTK，当前系统不可用。",
     };
 }

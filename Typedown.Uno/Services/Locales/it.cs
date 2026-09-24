@@ -137,7 +137,7 @@ public static partial class LocaleTables
         ["TestConnection"] = "Prova la connessione",
         ["Test"] = "Prova",
         ["InsertImage"] = "Inserisci immagine…",
-        ["PrintPdf"] = "Stampa / esporta PDF…",
+        ["PrintPdf"] = "Stampa…",
         ["PrintOpened"] = "Aperto nel browser: usa la sua finestra di stampa per salvare in PDF",
         ["NewFileHere"] = "Nuovo file qui",
         ["NewFolderHere"] = "Nuova cartella qui",
@@ -167,7 +167,7 @@ public static partial class LocaleTables
         ["CmdSave"] = "Salva",
         ["CmdSaveAs"] = "Salva con nome",
         ["CmdExportHtml"] = "Esporta HTML",
-        ["CmdPrint"] = "Stampa / esporta PDF",
+        ["CmdPrint"] = "Stampa",
         ["CmdShareHedgeDoc"] = "Condividi su HedgeDoc",
         ["CmdSettings"] = "Impostazioni",
         ["CmdCloseTab"] = "Chiudi scheda",
@@ -253,5 +253,10 @@ public static partial class LocaleTables
         ["CmdUndo"] = "Annulla",
         ["CmdRedo"] = "Ripristina",
         ["CmdReplace"] = "Sostituisci",
+        ["ExportPdf"] = "Esporta in PDF…",
+        ["CmdExportPdf"] = "Esporta in PDF",
+        ["Exporting"] = "Esportazione…",
+        ["PdfFailed"] = "Impossibile creare il PDF.",
+        ["PdfUnavailable"] = "L'esportazione in PDF richiede WebKitGTK, non disponibile qui.",
     };
 }
