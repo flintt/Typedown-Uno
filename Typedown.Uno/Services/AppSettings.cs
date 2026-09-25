@@ -97,7 +97,9 @@ public sealed class AppSettings : INotifyPropertyChanged
     /// </summary>
     [EditorOption] public bool ReadOnly { get => readOnly; set { Set(ref readOnly, value); if (value && SourceCode) SourceCode = false; } }
 
-    private bool keepSwitchedDocuments = true;
+    // Off by default: see the note on the Windows setting of the same name. Holding more than one editor
+    // at a time has produced five faults, the last of which none of the editor checks can reproduce.
+    private bool keepSwitchedDocuments;
     /// <summary>
     /// Keep a document a tab switch moved away from built, instead of building it again on return: memory
     /// traded for the wait. See docs/editor-performance.md in the Windows repository.
