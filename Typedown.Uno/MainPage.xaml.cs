@@ -117,6 +117,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         if (startFolder != null && Directory.Exists(startFolder)) SetWorkFolder(startFolder);
         if (workFolder == null && document.FilePath != null) SetWorkFolder(Path.GetDirectoryName(document.FilePath)!);
         ApplyStatusBar();
+        ApplyReadOnlyBadge();
         UpdateTitle();
         UpdateTabBar();
         HookWindowClosing();
@@ -1444,6 +1445,20 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
 
     private void ApplyStatusBar() => StatusBar.Visibility = settings.StatusBarOpen ? Visibility.Visible : Visibility.Collapsed;
 
+    /// <summary>
+    /// Reading mode ignores every keystroke, which looks like the editor has stopped responding unless
+    /// something says otherwise. The badge says it and is the way out; the title says it too, because the
+    /// status bar can be switched off.
+    /// </summary>
+    private void ApplyReadOnlyBadge()
+    {
+        if (ReadOnlyBadge == null) return;
+        ReadOnlyBadge.Content = Loc.Get("ReadOnly");
+        ReadOnlyBadge.Visibility = settings.ReadOnly ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void OnLeaveReadOnlyClick(object sender, RoutedEventArgs e) => settings.ReadOnly = false;
+
     private void ApplySidePane()
     {
         var open = settings.SidePaneOpen;
@@ -1620,6 +1635,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                     break;
                 case nameof(AppSettings.AlwaysShowTabBar): UpdateTabBar(); break;
                 case nameof(AppSettings.StatusBarOpen): ApplyStatusBar(); break;
+                case nameof(AppSettings.ReadOnly): ApplyReadOnlyBadge(); UpdateTitle(); break;
                 case nameof(AppSettings.WordCountMethod): lastTocJson = null; break;
                 case nameof(AppSettings.RecentFiles): FillRecent(); break;
                 case nameof(AppSettings.Language): Loc.Apply(settings.Language); ApplyStrings(); BuildMenus(); UpdateTitle(); _ = PostContextMenuStrings(); break;
@@ -1635,6 +1651,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         ToolTipService.SetToolTip(SearchButton, Loc.Get("SearchInFolder"));
         SearchBox.PlaceholderText = Loc.Get("SearchPlaceholder");
         OpenFolderButton.Content = Loc.Get("OpenFolder");
+        ApplyReadOnlyBadge();
     }
 
     /// <summary>
@@ -1909,6 +1926,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private void UpdateTitle()
     {
         var title = document?.Title ?? "Typedown";
+        if (settings.ReadOnly) title += " \u00b7 " + Loc.Get("ReadOnly");
         if (window != null) window.Title = title;
         // Uno publishes the title as Latin-1 and, under a window manager, not at all after the window is up;
         // non-ASCII titles need UTF-8, and each window gets its own.
