@@ -107,7 +107,7 @@ public static class WebViewBackground
     /// All of it is Uno's own plumbing, so a version that renames a field leaves the colour unset rather than
     /// throwing: the flash comes back, nothing else.
     /// </summary>
-    private static IntPtr FindWebKitHandle(object webViewControl)
+    internal static IntPtr FindWebKitHandle(object webViewControl)
     {
         const BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
         var core = webViewControl.GetType().GetProperty("CoreWebView2", Flags)?.GetValue(webViewControl);

@@ -60,7 +60,12 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         window = App.WindowFor(XamlRoot) ?? App.MainWindow;
         // This window's X11 id (Uno exposes no handle). It may not exist yet, so the lookup is retried later.
         NativeWindow();
-        if (window != null) window.Activated += (_, _) => PublishNativeChrome();
+        if (window != null) window.Activated += (_, args) =>
+        {
+            PublishNativeChrome();
+            // The caret follows the app window's activation (see WebViewCaret).
+            Services.WebViewCaret.SetActive(EditorView, args.WindowActivationState != Windows.UI.Core.CoreWindowActivationState.Deactivated);
+        };
         ApplyStrings();
         HookTabBarWheel();
         BuildMenus();
@@ -174,6 +179,8 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         {
             editorPageLoaded |= args.IsSuccess;
             Services.Log.Write(args.IsSuccess ? "editor page loaded" : $"navigation failed: {args.WebErrorStatus}");
+            // The app window was activated before the page existed; the caret needs the view's window active too.
+            if (args.IsSuccess) Services.WebViewCaret.SetActive(EditorView, true);
         };
         // The folder is relative to the app directory (Uno's X11 WebView joins it onto the base directory),
         // so it must stay relative — an absolute path would be concatenated onto the base directory.
