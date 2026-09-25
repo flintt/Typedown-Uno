@@ -241,7 +241,6 @@ public static partial class LocaleTables
         ["ThemeDocument"] = "Как написать тему",
         ["FullScreen"] = "Полноэкранный режим",
         ["CmdFullScreen"] = "Полноэкранный режим",
-        ["KeepSwitchedDocuments"] = "Хранить покинутые документы в памяти",
         ["LargeDocumentSourceMode"] = "Документ из {0}k символов открывается в режиме исходного текста; вернуться можно через меню «Вид».",
         ["Undo"] = "Отменить",
         ["Redo"] = "Повторить",

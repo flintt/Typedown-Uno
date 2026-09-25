@@ -239,7 +239,6 @@
   "ThemeDocument": "How to write a theme",
   "FullScreen": "Full screen",
   "CmdFullScreen": "Full screen",
-  "KeepSwitchedDocuments": "Keep switched-away documents in memory",
   "LargeDocumentSourceMode": "A {0}k-character document opens in source mode; the View menu switches back.",
   "Undo": "Undo",
   "Redo": "Redo",

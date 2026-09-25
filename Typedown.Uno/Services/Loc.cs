@@ -63,7 +63,7 @@ public static class Loc
         ["NewWindow"] = "New window", ["OpenInNewWindow"] = "Open in a new window", ["CmdNewWindow"] = "New window",
         ["SettingsTitle"] = "Settings", ["General"] = "General", ["Language"] = "Language", ["LangSystem"] = "System", ["Appearance"] = "Appearance", ["Editor"] = "Editor",
         ["FontSize"] = "Font size", ["LineHeight"] = "Line height", ["EditorWidth"] = "Editor width", ["TabSize"] = "Tab size", ["ListIndentation"] = "List indentation",
-        ["TableAlign"] = "Align table columns", ["LooseList"] = "Loose list items", ["ParagraphMarker"] = "Show paragraph markers", ["KeepSwitchedDocuments"] = "Keep switched-away documents in memory", ["Spellcheck"] = "Spell check",
+        ["TableAlign"] = "Align table columns", ["LooseList"] = "Loose list items", ["ParagraphMarker"] = "Show paragraph markers", ["Spellcheck"] = "Spell check",
         ["AutoSave"] = "Auto save", ["RememberPosition"] = "Remember caret and scroll position", ["AlwaysShowTabBar"] = "Always show the tab bar",
         ["HedgeDoc"] = "HedgeDoc", ["Server"] = "Server", ["Email"] = "Email (optional)", ["Password"] = "Password", ["PublishReadOnly"] = "Also publish a read-only link",
         ["Shared"] = "Shared to HedgeDoc", ["ReadOnlyLink"] = "Read-only link", ["EditLink"] = "Editable link", ["CopyLink"] = "Copy link", ["OpenInBrowser"] = "Open in browser",

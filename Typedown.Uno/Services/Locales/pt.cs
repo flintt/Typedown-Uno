@@ -241,7 +241,6 @@ public static partial class LocaleTables
         ["ThemeDocument"] = "Como criar um tema",
         ["FullScreen"] = "Ecrã inteiro",
         ["CmdFullScreen"] = "Ecrã inteiro",
-        ["KeepSwitchedDocuments"] = "Manter na memória os documentos que deixou",
         ["LargeDocumentSourceMode"] = "Um documento de {0}k caracteres abre em modo de origem; o menu Ver permite voltar.",
         ["Undo"] = "Desfazer",
         ["Redo"] = "Refazer",

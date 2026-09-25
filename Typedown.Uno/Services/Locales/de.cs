@@ -241,7 +241,6 @@ public static partial class LocaleTables
         ["ThemeDocument"] = "So schreibt man ein Theme",
         ["FullScreen"] = "Vollbild",
         ["CmdFullScreen"] = "Vollbild",
-        ["KeepSwitchedDocuments"] = "Verlassene Dokumente im Speicher behalten",
         ["LargeDocumentSourceMode"] = "Ein Dokument mit {0}k Zeichen wird im Quelltextmodus geöffnet; über das Menü „Ansicht“ lässt sich zurückwechseln.",
         ["Undo"] = "Rückgängig",
         ["Redo"] = "Wiederholen",

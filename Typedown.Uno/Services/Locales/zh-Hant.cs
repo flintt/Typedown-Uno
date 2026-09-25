@@ -246,7 +246,6 @@ public static partial class LocaleTables
         ["ThemeDocument"] = "如何編寫主題",
         ["FullScreen"] = "全螢幕",
         ["CmdFullScreen"] = "全螢幕",
-        ["KeepSwitchedDocuments"] = "在記憶體中保留切走的文件",
         ["LargeDocumentSourceMode"] = "{0}k 字元的文件以原始碼模式開啟；可在「檢視」選單切回。",
         ["Undo"] = "復原",
         ["Redo"] = "重做",

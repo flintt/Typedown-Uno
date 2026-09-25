@@ -241,7 +241,6 @@ public static partial class LocaleTables
         ["ThemeDocument"] = "テーマの書き方",
         ["FullScreen"] = "全画面表示",
         ["CmdFullScreen"] = "全画面表示",
-        ["KeepSwitchedDocuments"] = "切り替えて離れた文書をメモリに保持する",
         ["LargeDocumentSourceMode"] = "{0}k 文字の文書はソースモードで開きます。表示メニューで戻せます。",
         ["Undo"] = "元に戻す",
         ["Redo"] = "やり直し",

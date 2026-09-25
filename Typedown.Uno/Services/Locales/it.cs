@@ -241,7 +241,6 @@ public static partial class LocaleTables
         ["ThemeDocument"] = "Come scrivere un tema",
         ["FullScreen"] = "Schermo intero",
         ["CmdFullScreen"] = "Schermo intero",
-        ["KeepSwitchedDocuments"] = "Mantieni in memoria i documenti lasciati",
         ["LargeDocumentSourceMode"] = "Un documento di {0}k caratteri si apre in modalità sorgente; il menu Visualizza consente di tornare indietro.",
         ["Undo"] = "Annulla",
         ["Redo"] = "Ripristina",
