@@ -1,0 +1,17 @@
+#!/bin/bash
+# Refuse to ship an editor page that cannot talk to the host, or that points at a file that is not there.
+set -eu
+HERE=$(cd "$(dirname "$0")/.." && pwd)
+DEST=${1:-$HERE/Typedown.Uno/Assets/Editor}
+fail=0
+
+grep -q 'uno-bridge\.js' "$DEST/index.html" || {
+  echo "index.html does not load uno-bridge.js — the host cannot post to the editor and it stays blank" >&2; fail=1; }
+[ -f "$DEST/uno-bridge.js" ] || { echo "uno-bridge.js is missing" >&2; fail=1; }
+
+for ref in $(grep -o 'static/[a-z]*/main\.[a-f0-9]*\.\(js\|css\)' "$DEST/index.html" | sort -u); do
+  [ -f "$DEST/$ref" ] || { echo "index.html references $ref, which is not in the package" >&2; fail=1; }
+done
+
+[ $fail -eq 0 ] && echo "editor assets look right: bridge loaded, every referenced file present"
+exit $fail

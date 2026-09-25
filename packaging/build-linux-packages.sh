@@ -7,6 +7,10 @@
 #   ./packaging/build-linux-packages.sh <published-dir> <version> [output-dir]
 set -e
 
+# The editor page has to be able to reach the host, and to point at files that are in the package. Five
+# packages shipped with a blank editor because index.html lost the tag that loads uno-bridge.js.
+bash "$(dirname "$0")/check-editor-assets.sh"
+
 PUBLISH=${1:?usage: build-linux-packages.sh <published-dir> <version> [out]}
 VERSION=${2:?version}
 OUT=${3:-dist}
