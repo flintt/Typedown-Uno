@@ -16,6 +16,16 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 jobs:
+  strings:
+    name: Check translations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Two ways the translations go quietly wrong, both of which have happened: a string added to Loc.cs
+      # but never to tables/en.json, which no language can then carry, and a Locales/*.cs edited by hand,
+      # which the next run of the generator throws away. --check catches both without writing anything.
+      - run: python3 Tools/Translations/generate.py --check
+
   build:
     name: ${{ matrix.name }}
     # A release pushes the version bump to main and then the tag, which used to start the same build twice.
