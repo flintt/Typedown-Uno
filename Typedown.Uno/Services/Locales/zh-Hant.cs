@@ -205,6 +205,7 @@ public static partial class LocaleTables
         ["TableAlign"] = "對齊表格列",
         ["LooseList"] = "寬鬆列表",
         ["ParagraphMarker"] = "顯示段落標記",
+        ["KeepSwitchedDocuments"] = "在記憶體中保留切走的文件",
         ["Spellcheck"] = "拼寫檢查",
         ["AutoSave"] = "自動儲存",
         ["RememberPosition"] = "記住游標和滾動位置",

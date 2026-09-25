@@ -97,6 +97,13 @@ public sealed class AppSettings : INotifyPropertyChanged
     /// </summary>
     [EditorOption] public bool ReadOnly { get => readOnly; set { Set(ref readOnly, value); if (value && SourceCode) SourceCode = false; } }
 
+    private bool keepSwitchedDocuments = true;
+    /// <summary>
+    /// Keep a document a tab switch moved away from built, instead of building it again on return: memory
+    /// traded for the wait. See docs/editor-performance.md in the Windows repository.
+    /// </summary>
+    [EditorOption] public bool KeepSwitchedDocuments { get => keepSwitchedDocuments; set => Set(ref keepSwitchedDocuments, value); }
+
     private bool showParagraphMarker = true;
     [EditorOption] public bool ShowParagraphMarker { get => showParagraphMarker; set => Set(ref showParagraphMarker, value); }
 

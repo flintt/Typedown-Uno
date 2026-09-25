@@ -120,6 +120,7 @@ public sealed partial class SettingsDialog : ContentDialog
         Toggle("LooseList", settings.PreferLooseListItem, v => settings.PreferLooseListItem = v);
         Toggle("TrimCodeBlock", settings.TrimUnnecessaryCodeBlockEmptyLines, v => settings.TrimUnnecessaryCodeBlockEmptyLines = v);
         Toggle("ParagraphMarker", settings.ShowParagraphMarker, v => settings.ShowParagraphMarker = v);
+        Toggle("KeepSwitchedDocuments", settings.KeepSwitchedDocuments, v => settings.KeepSwitchedDocuments = v);
         Toggle("Spellcheck", settings.SpellcheckEnabled, v => settings.SpellcheckEnabled = v);
         Toggle("AutoPairBracket", settings.AutoPairBracket, v => settings.AutoPairBracket = v);
         Toggle("AutoPairQuote", settings.AutoPairQuote, v => settings.AutoPairQuote = v);
