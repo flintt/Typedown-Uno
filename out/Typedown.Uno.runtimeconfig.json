@@ -1,0 +1,17 @@
+{
+  "runtimeOptions": {
+    "tfm": "net9.0",
+    "includedFrameworks": [
+      {
+        "name": "Microsoft.NETCore.App",
+        "version": "9.0.20"
+      }
+    ],
+    "configProperties": {
+      "Windows.ApplicationModel.DataTransfer.DragDrop.ExternalSupport": true,
+      "Uno.UI.EnableDynamicDataTemplateUpdate": false,
+      "System.Reflection.Metadata.MetadataUpdater.IsSupported": false,
+      "System.Runtime.Serialization.EnableUnsafeBinaryFormatterSerialization": false
+    }
+  }
+}

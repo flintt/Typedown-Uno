@@ -135,6 +135,10 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
                 break;
             case "OnScroll":
                 if (!FileLoaded) return;
+                // Only the page showing this load knows where the reader is. A report without a load id is a
+                // freshly navigated page reporting its empty body's first layout as 0; one with another id is
+                // the page that was, still talking. Either recorded a 0 that the next load then came back to.
+                if (args?["loadId"] == null || IsStale(args)) return;
                 var y = args?["scrollY"]?.GetValue<double?>();
                 if (y == null) return;
                 ScrollTop = y;
