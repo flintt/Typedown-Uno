@@ -250,8 +250,11 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private async Task PostToEditor(string json)
     {
         var script = "window.__unoDeliver(" + JsonSerializer.Serialize(json) + ")";
+        var started = DateTime.UtcNow;
         try { await EditorView.ExecuteScriptAsync(script); }
         catch (Exception ex) { Console.Error.WriteLine($"[Typedown.Uno] post to editor failed: {ex.Message}"); }
+        var ms = (DateTime.UtcNow - started).TotalMilliseconds;
+        if (json.Length > 65536 || ms > 200) Services.Log.Write($"post to editor: {json.Length} chars took {ms:F0} ms");
     }
 
     private Task Post(string name, object? args) => transport?.PostMessage(name, args) ?? Task.CompletedTask;
@@ -1715,6 +1718,9 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             await ShowErrorAsync(Loc.Get("ImportHtml"), ex.Message);
         }
     }
+
+    /// <summary>The document model asking for a line in the status bar (see IHostUi).</summary>
+    public void ShowStatus(string message) => DispatcherQueue.TryEnqueue(() => SetStatus(message));
 
     private async Task ExportHtmlAsync()
     {

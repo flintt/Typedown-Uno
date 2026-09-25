@@ -21,6 +21,7 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
         Task<AskResult> AskSaveAsync(string fileName);
         Task<bool> ConfirmAsync(string title, string message, string yes, string no);
         Task ShowErrorAsync(string title, string message);
+        void ShowStatus(string message);
     }
 
     public static readonly string DefaultMarkdown = "\n";
@@ -294,6 +295,21 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
         await PostLoadFile(Markdown);
     }
 
+    /// <summary>
+    /// Past this many characters the formatted view is not worth waiting for on this platform: WebKitGTK
+    /// lays a document out in a way that grows far faster than the file does (measured on one machine:
+    /// 50k characters 1.9 s, 100k 5.5 s, 300k 43 s, 1.5M 129 s — the same file in source mode: 2.9 s).
+    /// So a large document opens in source mode, and the reader is told; the View menu switches back.
+    /// </summary>
+    private const int SourceModeAboveChars = 150000;
+
+    private void SwitchToSourceForLargeDocument(string text)
+    {
+        if (settings.SourceCode || text.Length <= SourceModeAboveChars) return;
+        settings.SourceCode = true;
+        ui.ShowStatus(Loc.Format("LargeDocumentSourceMode", text.Length / 1000));
+    }
+
     public Task<string?> PickOpenAsync() => ui.PickOpenFileAsync();
 
     /// <summary>Reads the file into the live document; the saved baseline comes back through FileLoaded.</summary>
@@ -304,6 +320,7 @@ public sealed class DocumentViewModel : INotifyPropertyChanged, IDisposable
             if (!File.Exists(path)) throw new FileNotFoundException(Loc.Get("CannotOpen"), path);
             var (text, format) = await TextFileFormat.ReadAsync(path);
             FileFormat = format;
+            SwitchToSourceForLargeDocument(text);
             StopWatching();
             FilePath = Path.GetFullPath(path);
             Markdown = text;

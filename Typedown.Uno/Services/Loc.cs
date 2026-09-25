@@ -16,7 +16,7 @@ public static class Loc
         ["CopyAsMarkdown"] = "Copy as Markdown", ["CopyAsHtml"] = "Copy as HTML", ["Replace"] = "Replace…",
         ["CmdUndo"] = "Undo", ["CmdRedo"] = "Redo", ["CmdReplace"] = "Replace",
         ["ReplaceWith"] = "Replace with", ["ReplaceAction"] = "Replace", ["ReplaceAll"] = "Replace all",
-        ["ExportPdf"] = "Export PDF…", ["ExportImage"] = "Export picture…", ["ImageFailed"] = "The picture could not be written.", ["ImportHtml"] = "Import HTML…", ["CmdExportPdf"] = "Export PDF", ["Exporting"] = "Exporting…",
+        ["LargeDocumentSourceMode"] = "A {0}k-character document opens in source mode; the View menu switches back.", ["ExportPdf"] = "Export PDF…", ["ExportImage"] = "Export picture…", ["ImageFailed"] = "The picture could not be written.", ["ImportHtml"] = "Import HTML…", ["CmdExportPdf"] = "Export PDF", ["Exporting"] = "Exporting…",
         ["PdfFailed"] = "The PDF could not be written.", ["PdfUnavailable"] = "PDF export needs WebKitGTK, which is not available here.",
         ["Paragraph"] = "Paragraph", ["Heading"] = "Heading", ["HeadingN"] = "Heading {0}", ["ParagraphPlain"] = "Paragraph", ["IncreaseHeading"] = "Increase heading level",
         ["DecreaseHeading"] = "Decrease heading level", ["Table"] = "Table…", ["CodeFences"] = "Code fences", ["MathBlock"] = "Math block", ["Quote"] = "Quote",
