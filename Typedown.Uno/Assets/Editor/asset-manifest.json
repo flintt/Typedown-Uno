@@ -1,7 +1,7 @@
 {
   "files": {
     "main.css": "./static/css/main.c9c4dfd4.css",
-    "main.js": "./static/js/main.58fe9a6c.js",
+    "main.js": "./static/js/main.48a896d0.js",
     "static/media/DejaVuSansMono.ttf": "./static/media/DejaVuSansMono.9ff4cd0a41ae679059ae.ttf",
     "static/media/DejaVuSansMono-Bold.ttf": "./static/media/DejaVuSansMono-Bold.d707da3273e928fefc1a.ttf",
     "static/media/DejaVuSansMono-BoldOblique.ttf": "./static/media/DejaVuSansMono-BoldOblique.62494923a230eb3b0bc5.ttf",
@@ -83,10 +83,10 @@
     "static/media/KaTeX_Size3-Regular.woff2": "./static/media/KaTeX_Size3-Regular.e1951519f6f0596f7356.woff2",
     "index.html": "./index.html",
     "main.c9c4dfd4.css.map": "./static/css/main.c9c4dfd4.css.map",
-    "main.58fe9a6c.js.map": "./static/js/main.58fe9a6c.js.map"
+    "main.48a896d0.js.map": "./static/js/main.48a896d0.js.map"
   },
   "entrypoints": [
     "static/css/main.c9c4dfd4.css",
-    "static/js/main.58fe9a6c.js"
+    "static/js/main.48a896d0.js"
   ]
 }
