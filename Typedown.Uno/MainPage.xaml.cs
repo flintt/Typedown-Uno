@@ -223,12 +223,32 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private bool editorPageLoaded;
     private string? lastTocJson;
     private JsonNode? latestToc;
+    // The heading the editor last reported as current, so the outline can mark it and bring it into view — and
+    // re-mark it after the list is rebuilt (a new ItemsSource drops the selection).
+    private string? currentOutlineSlug;
 
     /// <summary>Fills the outline from the most recent editor state (it is only tracked while visible).</summary>
     private void RefreshOutline()
     {
         lastTocJson = latestToc?.ToJsonString();
         OutlineList.ItemsSource = OutlineItem.FromToc(latestToc);
+        MarkOutlineCurrent();
+    }
+
+    /// <summary>
+    /// Marks the heading the reader is at in the outline and scrolls that row into view, following the page as
+    /// it scrolls. Selecting the row programmatically does not raise ItemClick, so it never posts ScrollTo back
+    /// to the editor — no feedback loop, no twitch.
+    /// </summary>
+    private void MarkOutlineCurrent()
+    {
+        if (currentOutlineSlug == null) return;
+        if (OutlineList.ItemsSource is not IEnumerable<OutlineItem> items) return;
+        OutlineItem? match = null;
+        foreach (var it in items) if (it.Slug == currentOutlineSlug) { match = it; break; }
+        if (match == null) { OutlineList.SelectedItem = null; return; }
+        if (!ReferenceEquals(OutlineList.SelectedItem, match)) OutlineList.SelectedItem = match;
+        OutlineList.ScrollIntoView(match);
     }
     private string? pendingWordCount;
     private string? shownWordCount;
@@ -454,9 +474,17 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                     {
                         lastTocJson = tocJson;
                         var items = OutlineItem.FromToc(latestToc);
-                        DispatcherQueue.TryEnqueue(() => OutlineList.ItemsSource = items);
+                        DispatcherQueue.TryEnqueue(() => { OutlineList.ItemsSource = items; MarkOutlineCurrent(); });
                     }
                 }
+                break;
+            case "OutlineCurrent":
+                // The editor reports the heading the reader is at as the page scrolls (both edit and reading
+                // mode). Mark it in the outline and keep that row in view. A slug from a stale load, or one not
+                // in the current table of contents, simply finds no match and is ignored.
+                if (args?["loadId"] == null) break;
+                var curSlug = args?["slug"]?.GetValue<string>();
+                DispatcherQueue.TryEnqueue(() => { currentOutlineSlug = curSlug; MarkOutlineCurrent(); });
                 break;
             case "OpenURI":
                 var uri = args?["uri"]?.GetValue<string>();

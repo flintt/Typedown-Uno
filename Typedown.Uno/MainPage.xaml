@@ -67,7 +67,7 @@
             <Grid Grid.Row="1">
               <TreeView x:Name="FileTree" ItemTemplate="{StaticResource FolderItemTemplate}" SelectionMode="Single" CanDragItems="False" CanReorderItems="False"
                         ItemInvoked="OnFileTreeItemInvoked" DoubleTapped="OnFileTreeDoubleTapped" RightTapped="OnFileTreeRightTapped"/>
-              <ListView x:Name="OutlineList" ItemTemplate="{StaticResource OutlineItemTemplate}" IsItemClickEnabled="True" ItemClick="OnOutlineItemClick" SelectionMode="None" Visibility="Collapsed" Padding="8,0"/>
+              <ListView x:Name="OutlineList" ItemTemplate="{StaticResource OutlineItemTemplate}" IsItemClickEnabled="True" ItemClick="OnOutlineItemClick" SelectionMode="Single" Visibility="Collapsed" Padding="8,0"/>
             </Grid>
             <StackPanel Grid.Row="2" Padding="8" Spacing="4">
               <TextBlock x:Name="SidePaneStatus" FontSize="12" Opacity="0.7" TextWrapping="Wrap"/>
