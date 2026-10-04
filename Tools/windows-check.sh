@@ -1,5 +1,5 @@
 #!/bin/bash
-# Two windows and dialogs, as the reader meets them:
+# Two windows and dialogs, as the reader meets them.
 #  - a second window opened: the first keeps its editor. Uno detached the first window's web view (unmapped, moved
 #    to the root) when the second drew its own, and nothing attached it again: after the second window closed, keys
 #    and clicks in the first went nowhere.

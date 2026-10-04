@@ -26,6 +26,8 @@ jobs:
       # which the next run of the generator throws away. --check catches both without writing anything.
       - run: python3 Tools/Translations/generate.py --check
       - run: bash packaging/check-app-assets.sh
+      # The list of desktop checks in docs/testing.md comes from the scripts' own comments.
+      - run: python3 Tools/testing-index.py
 
   reliability:
     name: Reliability tests
