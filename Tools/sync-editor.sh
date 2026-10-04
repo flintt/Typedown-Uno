@@ -16,22 +16,22 @@ cp -a "$FROM/." "$DEST/"
 rm -f "$DEST"/static/js/*.map "$DEST"/static/css/*.map
 
 # Whatever the Windows index.html says, the bridge has to be loaded before the editor, and mermaid only when a
-# document draws a diagram (uno-lazy-mermaid.js says why).
+# document draws a diagram (lazy-mermaid.js, part of the Windows bundle since typedown 7ad0dd3; an older bundle loads
+# mermaid.min.js itself, and this page used its own uno-lazy-mermaid.js before that).
 python3 - "$DEST/index.html" <<'PY'
 import sys
 p = sys.argv[1]
 s = open(p, encoding='utf-8').read()
-eager = '<script src="./mermaid.min.js"></script>'
-lazy = '<script src="./uno-lazy-mermaid.js"></script>'
+lazy = '<script src="./lazy-mermaid.js"></script>'
+for old in ('<script src="./mermaid.min.js"></script>', '<script src="./uno-lazy-mermaid.js"></script>'):
+    if old in s:
+        s = s.replace(old, lazy, 1)
+        print('  mermaid loads on demand')
 if 'uno-bridge.js' not in s:
-    anchor = eager if eager in s else lazy
-    if anchor not in s:
+    if lazy not in s:
         raise SystemExit('index.html does not look like the editor page; add the bridge tag by hand')
-    s = s.replace(anchor, anchor + '<script src="./uno-bridge.js"></script>', 1)
+    s = s.replace(lazy, lazy + '<script src="./uno-bridge.js"></script>', 1)
     print('  put the uno-bridge tag back')
-if eager in s:
-    s = s.replace(eager, lazy, 1)
-    print('  mermaid loads on demand')
 open(p, 'w', encoding='utf-8').write(s)
 PY
 

@@ -1,7 +1,7 @@
-// mermaid.min.js is 3.5 MB of script, and loading it from index.html made every start parse it first (about a
-// quarter of a second) although few documents draw a diagram. The editor looks the library up as window.mermaid
-// only when it draws one, and polls until it is there, so the first look-up is what loads it. index.html loads
-// this file in place of mermaid.min.js (Tools/sync-editor.sh puts it there).
+// mermaid.min.js is 3.5 MB of script, and loading it from index.html made every start parse it first (about a quarter
+// of a second) although few documents draw a diagram. The editor looks the library up as window.mermaid only when it
+// draws one (renderers/index.js, waitForGlobal, which polls until it is there), so the first look-up is what loads it.
+// From the Uno edition (Typedown-Uno #2), where it was measured; Tools/EditorBench/mermaid-lazy-check.js checks it.
 (function () {
     var requested = false;
     Object.defineProperty(window, 'mermaid', {
