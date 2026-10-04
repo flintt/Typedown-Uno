@@ -238,21 +238,26 @@ public sealed partial class SettingsDialog : ContentDialog
 
     private void Text(string key, string value, Action<string> set, string? placeholder = null, string? hint = null)
     {
-        var box = new TextBox { Text = value, MinWidth = 220, PlaceholderText = hint ?? (placeholder != null ? Loc.Get(placeholder) : "") };
+        // A fixed width: sized to their text, the boxes grew as one typed and pushed the rows apart (a long S3 secret
+        // squeezed the rows below it off the page). What does not fit scrolls inside the box.
+        var box = new TextBox { Text = value, Width = InputWidth, PlaceholderText = hint ?? (placeholder != null ? Loc.Get(placeholder) : "") };
         box.TextChanged += (_, _) => { if (!loading) set(box.Text.Trim()); };
         Add(Row(key, box));
     }
 
     private void MultilineText(string key, string value, Action<string> set)
     {
-        var box = new TextBox { Text = value, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, Height = 90, MinWidth = 220 };
+        var box = new TextBox { Text = value, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, Height = 90, Width = InputWidth };
         box.TextChanged += (_, _) => { if (!loading) set(box.Text); };
         Add(Row(key, box, stacked: true));
     }
 
+    /// <summary>The width of every text box here (Text, MultilineText, Password).</summary>
+    private const double InputWidth = 320;
+
     private void Password(string key, string value, Action<string> set, string? descriptionKey = null)
     {
-        var box = new PasswordBox { Password = value, MinWidth = 220 };
+        var box = new PasswordBox { Password = value, Width = InputWidth };
         box.PasswordChanged += (_, _) => { if (!loading) set(box.Password); };
         Add(Row(key, box, descriptionKey));
     }
@@ -328,7 +333,7 @@ public sealed partial class SettingsDialog : ContentDialog
         {
             Text = settings.Shortcuts.Get(command).ToString(),
             IsReadOnly = true,
-            MinWidth = 170,
+            Width = 170,
             PlaceholderText = Loc.Get("ShortcutNone"),
         };
         box.PreviewKeyDown += (_, e) =>

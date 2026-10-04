@@ -1523,7 +1523,8 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
 
     private async Task<string?> AskNameAsync(string titleKey, string initial)
     {
-        var box = new TextBox { Text = initial, SelectionStart = 0, SelectionLength = Path.GetFileNameWithoutExtension(initial).Length };
+        // A fixed width: the dialog is as wide as its content, and a box sized to its text widened it with every key.
+        var box = new TextBox { Text = initial, Width = 360, SelectionStart = 0, SelectionLength = Path.GetFileNameWithoutExtension(initial).Length };
         var dialog = new ContentDialog
         {
             Title = Loc.Get(titleKey),
@@ -2343,9 +2344,9 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     {
         var panel = new StackPanel { Spacing = 8, MinWidth = 420 };
         if (note != null) panel.Children.Add(new TextBlock { Text = note, TextWrapping = TextWrapping.Wrap });
-        if (result.PublishedUrl != null) { panel.Children.Add(new TextBlock { Text = Loc.Get("ReadOnlyLink") }); panel.Children.Add(new TextBox { Text = result.PublishedUrl, IsReadOnly = true }); }
+        if (result.PublishedUrl != null) { panel.Children.Add(new TextBlock { Text = Loc.Get("ReadOnlyLink") }); panel.Children.Add(new TextBox { Text = result.PublishedUrl, IsReadOnly = true, Width = 420 }); }
         panel.Children.Add(new TextBlock { Text = Loc.Get("EditLink") });
-        panel.Children.Add(new TextBox { Text = result.NoteUrl, IsReadOnly = true });
+        panel.Children.Add(new TextBox { Text = result.NoteUrl, IsReadOnly = true, Width = 420 }); // a long link would widen the dialog
         if (result.PublishedUrl == null) panel.Children.Add(new TextBlock { Text = Loc.Get("EditableWarning"), Opacity = 0.7, TextWrapping = TextWrapping.Wrap });
         var dialog = new ContentDialog { Title = Loc.Get("Shared"), Content = panel, PrimaryButtonText = Loc.Get("CopyLink"), SecondaryButtonText = Loc.Get("OpenInBrowser"), CloseButtonText = Loc.Get("Close"), XamlRoot = XamlRoot, RequestedTheme = DialogTheme };
         var choice = await ShowDialogAsync(dialog);
