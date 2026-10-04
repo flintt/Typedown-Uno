@@ -321,5 +321,6 @@ public static partial class LocaleTables
         ["UploadHistoryDescription"] = "Une image déjà mise en ligne avec les mêmes paramètres n'est pas remise en ligne ; son adresse précédente est utilisée. Effacez l'historique après avoir supprimé des fichiers mis en ligne.",
         ["UploadHistoryCount"] = "{0} mémorisées",
         ["Clear"] = "Effacer",
+        ["ImagesInserted"] = "{0} images insérées",
     };
 }

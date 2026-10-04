@@ -58,6 +58,7 @@ public static class Loc
         ["AutoPairBracket"] = "Auto-pair brackets", ["AutoPairQuote"] = "Auto-pair quotes", ["AutoPairMarkdown"] = "Auto-pair Markdown syntax",
         ["RenderPlantUml"] = "Draw PlantUML diagrams", ["RenderPlantUmlDescription"] = "Sends the diagram's source to plantuml.com, which draws it",
         ["PlantUmlServer"] = "PlantUML server",
+        ["ImagesInserted"] = "{0} images inserted",
         ["UploadLocalImages"] = "Upload local images",
         ["CmdUploadLocalImages"] = "Upload local images",
         ["UploadImagesTitle"] = "Upload local images",

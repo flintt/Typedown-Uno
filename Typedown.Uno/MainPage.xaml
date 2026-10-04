@@ -123,6 +123,11 @@
         </TabView>
         <!-- The Typedown editor (React/Muya) in a WebView2; the host bridge lives in Assets/Editor/uno-bridge.js -->
         <WebView2 x:Name="EditorView" Grid.Row="1"/>
+        <!-- Files dragged onto the editor (MainPage.OnFilesDrop). On Linux the drop goes to the window, which is Uno's,
+             and over the native web view Uno's drag routing found no XAML element there: nothing happened. This
+             transparent element is one, and the drag events bubble from it to the page. It takes no clicks or keys
+             from the editor - the web view is a native window above it (Tools/drop-check.sh checks both). -->
+        <Border x:Name="DropOverlay" Grid.Row="1" Background="Transparent"/>
       </Grid>
     </Grid>
 

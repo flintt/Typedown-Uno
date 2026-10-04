@@ -321,5 +321,6 @@ public static partial class LocaleTables
         ["UploadHistoryDescription"] = "같은 설정으로 이미 업로드된 이미지는 다시 업로드하지 않고 이전 주소를 사용합니다. 업로드한 파일을 삭제한 후에는 기록을 지우세요.",
         ["UploadHistoryCount"] = "{0}개 기억됨",
         ["Clear"] = "지우기",
+        ["ImagesInserted"] = "이미지 {0}개를 삽입했습니다",
     };
 }

@@ -321,5 +321,6 @@ public static partial class LocaleTables
         ["UploadHistoryDescription"] = "Ein bereits mit denselben Einstellungen hochgeladenes Bild wird nicht erneut hochgeladen; seine frühere Adresse wird verwendet. Leeren Sie den Verlauf, nachdem Sie hochgeladene Dateien gelöscht haben.",
         ["UploadHistoryCount"] = "{0} gespeichert",
         ["Clear"] = "Leeren",
+        ["ImagesInserted"] = "{0} Bilder eingefügt",
     };
 }

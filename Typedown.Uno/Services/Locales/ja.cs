@@ -321,5 +321,6 @@ public static partial class LocaleTables
         ["UploadHistoryDescription"] = "同じ設定でアップロード済みの画像は再アップロードされず、以前のアドレスが使用されます。アップロードしたファイルを削除したら、履歴をクリアしてください。",
         ["UploadHistoryCount"] = "{0} 件を記録",
         ["Clear"] = "クリア",
+        ["ImagesInserted"] = "{0} 枚の画像を挿入しました",
     };
 }

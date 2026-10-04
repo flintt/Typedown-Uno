@@ -321,5 +321,6 @@ public static partial class LocaleTables
         ["UploadHistoryDescription"] = "Una imagen ya subida con la misma configuración no se vuelve a subir; se usa su dirección anterior. Borre el historial después de eliminar archivos subidos.",
         ["UploadHistoryCount"] = "{0} recordadas",
         ["Clear"] = "Borrar",
+        ["ImagesInserted"] = "{0} imágenes insertadas",
     };
 }

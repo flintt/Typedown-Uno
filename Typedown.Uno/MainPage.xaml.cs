@@ -102,6 +102,36 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         Loc.Apply(settings.Language);
         this.InitializeComponent();
         Loaded += OnLoaded;
+        // Files dragged in from the file manager: images go in at the caret, documents open, a folder becomes the
+        // work folder (OpenDroppedAsync, as for a drop the page reports). The page takes them over the menu, the tabs,
+        // the side pane, the status bar and - through DropOverlay (MainPage.xaml says why it is there) - the editor.
+        AllowDrop = true;
+        DragOver += OnFilesDragOver;
+        Drop += OnFilesDrop;
+    }
+
+    private void OnFilesDragOver(object sender, DragEventArgs e)
+    {
+        if (!e.DataView.Contains(StandardDataFormats.StorageItems)) return;
+        e.AcceptedOperation = DataPackageOperation.Copy;
+        e.Handled = true;
+    }
+
+    private async void OnFilesDrop(object sender, DragEventArgs e)
+    {
+        if (!e.DataView.Contains(StandardDataFormats.StorageItems)) return;
+        e.Handled = true;
+        try
+        {
+            var items = await e.DataView.GetStorageItemsAsync();
+            var paths = items.Select(i => i.Path).Where(p => !string.IsNullOrEmpty(p)).ToList();
+            Services.Log.Write($"drop: {paths.Count} item(s)");
+            if (paths.Count > 0) await OpenDroppedAsync(paths);
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Error("drop", ex);
+        }
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -695,6 +725,9 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private async Task OpenDroppedAsync(IReadOnlyList<string> paths)
     {
         if (tabs == null || document == null) return;
+        // The pictures go into the document the drop was on first, all together (one at the caret, several each in a
+        // paragraph of their own: one at a time, each replaced the one before); then the documents open.
+        await InsertImageFilesAsync(paths.Where(p => File.Exists(p) && ImagePaths.IsImageFile(p)).ToList());
         foreach (var path in paths)
         {
             try
@@ -708,7 +741,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                 }
                 else if (ImagePaths.IsImageFile(path))
                 {
-                    await InsertImageFileAsync(path);
+                    // inserted above
                 }
                 else if (File.Exists(path))
                 {
@@ -720,6 +753,38 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                 Services.Log.Error($"drop {path}", ex);
                 await ShowErrorAsync(Loc.Get("Error"), ex.Message);
             }
+        }
+    }
+
+    /// <summary>
+    /// Image files from a drop, in their order: each placed as Settings > Images says (copied, kept or uploaded), then
+    /// inserted together - one at the caret, several each in a paragraph of its own (the editor's InsertImages).
+    /// </summary>
+    private async Task InsertImageFilesAsync(IReadOnlyList<string> paths)
+    {
+        if (document == null || paths.Count == 0) return;
+        if (paths.Count == 1)
+        {
+            await InsertImageFileAsync(paths[0]);
+            return;
+        }
+        try
+        {
+            var images = new List<object>();
+            foreach (var path in paths)
+            {
+                var link = settings.ImageAction == ImageInsertAction.Upload
+                    ? await UploadOrKeepAsync(path)
+                    : ImagePaths.PlaceImage(path, document.FilePath, settings);
+                images.Add(new { src = settings.EncodeImageLinks ? ImagePaths.EncodeLink(link) : link, alt = Path.GetFileNameWithoutExtension(path), title = "" });
+            }
+            await Post("InsertImages", images);
+            SetStatus(string.Format(Loc.Get("ImagesInserted"), images.Count));
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Error("insert images", ex);
+            await ShowErrorAsync(Loc.Get("Error"), ex.Message);
         }
     }
 

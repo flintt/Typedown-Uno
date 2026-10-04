@@ -321,5 +321,6 @@ public static partial class LocaleTables
         ["UploadHistoryDescription"] = "Uma imagem já carregada com as mesmas configurações não é carregada novamente; seu endereço anterior é usado. Limpe o histórico depois de excluir arquivos carregados.",
         ["UploadHistoryCount"] = "{0} memorizadas",
         ["Clear"] = "Limpar",
+        ["ImagesInserted"] = "{0} imagens inseridas",
     };
 }

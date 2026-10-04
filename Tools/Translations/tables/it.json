@@ -313,5 +313,6 @@
   "UploadHistory": "Cronologia caricamenti",
   "UploadHistoryDescription": "Un'immagine già caricata con le stesse impostazioni non viene ricaricata; viene usato il suo indirizzo precedente. Cancella la cronologia dopo aver eliminato file caricati.",
   "UploadHistoryCount": "{0} memorizzate",
-  "Clear": "Cancella"
+  "Clear": "Cancella",
+  "ImagesInserted": "{0} immagini inserite"
 }

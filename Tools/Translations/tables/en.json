@@ -340,5 +340,6 @@
   "UploadHistory": "Upload history",
   "UploadHistoryDescription": "A picture already uploaded with the same settings is not uploaded again; its earlier address is used. Clear it after deleting uploaded files.",
   "UploadHistoryCount": "{0} remembered",
-  "Clear": "Clear"
+  "Clear": "Clear",
+  "ImagesInserted": "{0} images inserted"
 }

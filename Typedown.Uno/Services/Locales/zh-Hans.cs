@@ -348,5 +348,6 @@ public static partial class LocaleTables
         ["UploadHistoryDescription"] = "已用相同设置上传过的图片不会再次上传，而是沿用之前的地址。删除已上传的文件后请清除此记录。",
         ["UploadHistoryCount"] = "已记录 {0} 条",
         ["Clear"] = "清除",
+        ["ImagesInserted"] = "已插入 {0} 张图片",
     };
 }
