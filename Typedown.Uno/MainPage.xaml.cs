@@ -101,6 +101,9 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     {
         Loc.Apply(settings.Language);
         this.InitializeComponent();
+        // The menu items show their shortcuts; the page's accelerators need no tooltips of their own (Ctrl+, read
+        // "Ctrl+None" in one).
+        KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
         Loaded += OnLoaded;
         // Files dragged in from the file manager: images go in at the caret, documents open, a folder becomes the
         // work folder (OpenDroppedAsync, as for a drop the page reports). The page takes them over the menu, the tabs,
@@ -2098,7 +2101,8 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             settingsDialog = null;
             return;
         }
-        var dialog = new SettingsDialog(settings) { XamlRoot = XamlRoot, RequestedTheme = DialogTheme };
+        // No accelerator tooltips: the one for Ctrl+, (a key without a VirtualKey name) read "Ctrl+None".
+        var dialog = new SettingsDialog(settings) { XamlRoot = XamlRoot, RequestedTheme = DialogTheme, KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden };
         PaintFromTheme(dialog);
         // A dialog takes the keyboard with it, so the shortcut has to be on the dialog as well for the second
         // press to close what the first one opened.

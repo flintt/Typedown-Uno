@@ -144,18 +144,44 @@ public sealed partial class SettingsDialog : ContentDialog
 
         // Where inserted images whose action is Upload, and File > Upload local images, send them (Services/ImageUploader).
         Section("UploadSection");
-        Combo("UploadMethod", new[] { Loc.Get("UploadMethodNone"), "S3 / R2 / OSS / COS", Loc.Get("UploadMethodCommand") }, (int)settings.ImageUploadMethod, i => settings.ImageUploadMethod = (ImageUploadMethod)i);
-        Text("S3Endpoint", settings.S3Endpoint, v => settings.S3Endpoint = v, hint: "https://<account>.r2.cloudflarestorage.com");
-        Text("S3Region", settings.S3Region, v => settings.S3Region = v, hint: "us-east-1 / auto");
-        Text("S3Bucket", settings.S3Bucket, v => settings.S3Bucket = v);
-        Text("S3AccessKey", settings.S3AccessKey, v => settings.S3AccessKey = v);
-        Password("S3SecretKey", settings.S3SecretKey, v => settings.S3SecretKey = v, CredentialStore.IsPersistentAvailable ? null : "PasswordSessionOnly");
-        Toggle("S3PathStyle", settings.S3PathStyle, v => settings.S3PathStyle = v);
-        Text("S3KeyPrefix", settings.S3KeyPrefix, v => settings.S3KeyPrefix = v, hint: "images/${year}/${month}");
-        Text("S3PublicUrl", settings.S3PublicUrl, v => settings.S3PublicUrl = v, hint: "https://img.example.com");
-        Text("UploadCommand", settings.ImageUploadCommand, v => settings.ImageUploadCommand = v, hint: "picgo upload \"$1\" | tail -n 1");
-        Add(new TextBlock { Text = Loc.Get("UploadCommandHint"), Opacity = 0.6, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4) });
-        UploadTestRow();
+        // Only the chosen method's fields, as the Windows edition shows one configuration page per method.
+        List<FrameworkElement> s3Rows = new(), commandRows = new(), testRows = new();
+        void ShowMethodRows()
+        {
+            var method = settings.ImageUploadMethod;
+            foreach (var row in s3Rows) row.Visibility = method == ImageUploadMethod.S3 ? Visibility.Visible : Visibility.Collapsed;
+            foreach (var row in commandRows) row.Visibility = method == ImageUploadMethod.Command ? Visibility.Visible : Visibility.Collapsed;
+            foreach (var row in testRows) row.Visibility = method == ImageUploadMethod.None ? Visibility.Collapsed : Visibility.Visible;
+        }
+        List<FrameworkElement> Rows(Action add)
+        {
+            var before = sections[currentSection].Count;
+            add();
+            return sections[currentSection].Skip(before).ToList();
+        }
+        Combo("UploadMethod", new[] { Loc.Get("UploadMethodNone"), "S3 / R2 / OSS / COS", Loc.Get("UploadMethodCommand") }, (int)settings.ImageUploadMethod, i =>
+        {
+            settings.ImageUploadMethod = (ImageUploadMethod)i;
+            ShowMethodRows();
+        });
+        s3Rows = Rows(() =>
+        {
+            Text("S3Endpoint", settings.S3Endpoint, v => settings.S3Endpoint = v, hint: "https://<account>.r2.cloudflarestorage.com");
+            Text("S3Region", settings.S3Region, v => settings.S3Region = v, hint: "us-east-1 / auto");
+            Text("S3Bucket", settings.S3Bucket, v => settings.S3Bucket = v);
+            Text("S3AccessKey", settings.S3AccessKey, v => settings.S3AccessKey = v);
+            Password("S3SecretKey", settings.S3SecretKey, v => settings.S3SecretKey = v, CredentialStore.IsPersistentAvailable ? null : "PasswordSessionOnly");
+            Toggle("S3PathStyle", settings.S3PathStyle, v => settings.S3PathStyle = v);
+            Text("S3KeyPrefix", settings.S3KeyPrefix, v => settings.S3KeyPrefix = v, hint: "images/${year}/${month}");
+            Text("S3PublicUrl", settings.S3PublicUrl, v => settings.S3PublicUrl = v, hint: "https://img.example.com");
+        });
+        commandRows = Rows(() =>
+        {
+            Text("UploadCommand", settings.ImageUploadCommand, v => settings.ImageUploadCommand = v, hint: "picgo upload \"$1\" | tail -n 1");
+            Add(new TextBlock { Text = Loc.Get("UploadCommandHint"), Opacity = 0.6, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4) });
+        });
+        testRows = Rows(UploadTestRow);
+        ShowMethodRows();
         UploadHistoryRow();
 
         Section("FindSection");
