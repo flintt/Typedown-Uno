@@ -221,7 +221,7 @@
     // In-page context menu. The editor suppresses the native menu (it expects the host to show its own), and on
     // Linux the web view is a separate native window, so a host flyout would be drawn behind it: the menu lives
     // in the page, like the find bar. Labels come from the host ("ContextMenuStrings").
-    var menuStrings = { copy: 'Copy', cut: 'Cut', paste: 'Paste', selectAll: 'Select all' };
+    var menuStrings = { copy: 'Copy', copyAsPlainText: 'Copy as plain text', cut: 'Cut', paste: 'Paste', selectAll: 'Select all' };
     var contextMenu = null;
 
     function isReadOnly() {
@@ -261,6 +261,8 @@
                 'background:var(--floatBgColor);border:1px solid var(--floatBorderColor);box-shadow:var(--floatShadow);' +
                 'font:13px system-ui,sans-serif;color:var(--editorColor);user-select:none;';
             document.body.appendChild(contextMenu);
+            // A press on the menu must not take the selection away before its command runs.
+            contextMenu.addEventListener('mousedown', function (e) { e.preventDefault(); });
         }
         var readOnly = isReadOnly();
         // Remember the selection now: clicking the menu can collapse it, and WebKit refuses execCommand('copy')
@@ -280,7 +282,9 @@
             return true;
         }
         function restoreCursor() {
-            if (!muya || !savedCursor) return;
+            // Reading mode has no caret: the selection on the page is the reader's, and putting a stale cursor back
+            // would replace it.
+            if (readOnly || !muya || !savedCursor) return;
             try {
                 muya.contentState.cursor = savedCursor;
                 muya.contentState.setCursor();
@@ -292,6 +296,10 @@
             // The editor's own copy puts Markdown and HTML on the clipboard (the host's SetClipboard), which keeps
             // bold, code and links across a copy/paste; plain text is the fallback when there is no editor.
             { label: menuStrings.copy, enabled: hasSelection, run: function () { if (!editorClipboard('Copy')) copyToHost(); } },
+            // The text as it reads, without Markdown (the editor's services/plainText); not in source mode, where the
+            // text is the Markdown.
+            { label: menuStrings.copyAsPlainText, enabled: hasSelection, hidden: !muya || !!document.querySelector('.CodeMirror'),
+              run: function () { restoreCursor(); local('Copy', { type: 'copyAsPlainText', copyInfo: null }); } },
             { label: menuStrings.cut, enabled: hasSelection && !readOnly, hidden: readOnly, run: function () { if (!editorClipboard('Cut')) { copyToHost(); local('DeleteSelection'); } } },
             { label: menuStrings.paste, enabled: !readOnly, hidden: readOnly, run: function () { restoreCursor(); send(JSON.stringify({ type: 'message', name: 'ClipboardTextRequest', args: {} })); } },
             { separator: true },

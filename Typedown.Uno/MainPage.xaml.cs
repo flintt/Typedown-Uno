@@ -415,6 +415,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private Task PostContextMenuStrings() => Post("ContextMenuStrings", new
     {
         copy = Loc.Get("Copy"),
+        copyAsPlainText = Loc.Get("CopyAsPlainText"),
         cut = Loc.Get("Cut"),
         paste = Loc.Get("Paste"),
         selectAll = Loc.Get("SelectAll"),
@@ -1110,8 +1111,10 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
 
         var edit = new MenuBarItem { Title = Loc.Get("Edit") };
         // Undo lives in the shell: the editor rebuilds its own DOM, so the browser's undo cannot be used.
-        undoMenuItem = Item("Undo", async () => { if (document != null) await document.UndoAsync(); }, ShortcutCommand.Undo);
-        redoMenuItem = Item("Redo", async () => { if (document != null) await document.RedoAsync(); }, ShortcutCommand.Redo);
+        // Not in reading mode, where the history's undo replaced the text all the same (an automation client's
+        // document.undo still works there, as its writes do).
+        undoMenuItem = Item("Undo", async () => { if (document != null && !settings.ReadOnly) await document.UndoAsync(); }, ShortcutCommand.Undo);
+        redoMenuItem = Item("Redo", async () => { if (document != null && !settings.ReadOnly) await document.RedoAsync(); }, ShortcutCommand.Redo);
         edit.Items.Add(undoMenuItem);
         edit.Items.Add(redoMenuItem);
         WireHistoryItems();
