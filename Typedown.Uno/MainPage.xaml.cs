@@ -76,6 +76,8 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private bool nativeIconApplied;
     private DataPackage? clipboardBatch;
     private DateTime clipboardBatchTime;
+    // The text this app last put on the clipboard: pasted back, it is the Markdown it was copied as (PasteClipboardTextAsync).
+    private static string? lastCopiedText;
 
     private readonly AppSettings settings = AppSettings.Current;
     private EditorTransport? transport;
@@ -457,9 +459,12 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             var text = await view.GetTextAsync();
             if (string.IsNullOrEmpty(text)) return;
             // Text copied from the editor also carries HTML; handing it over keeps bold, links and the rest,
-            // exactly as Ctrl+V does.
+            // exactly as Ctrl+V does. Except for our own copy: its HTML has the pictures at their absolute file
+            // addresses (for Word), and turned back into Markdown that put C:/... where the document had a relative
+            // path. Our copy comes back as the Markdown it was copied as.
             string? html = null;
-            if (view.Contains(StandardDataFormats.Html))
+            var ours = lastCopiedText != null && text.Replace("\r\n", "\n") == lastCopiedText.Replace("\r\n", "\n");
+            if (!ours && view.Contains(StandardDataFormats.Html))
             {
                 try { html = await view.GetHtmlFormatAsync(); } catch { }
                 // Windows wraps the fragment in a CF_HTML header; the editor wants the markup only.
@@ -531,7 +536,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             if (clipboardBatch == null || now - clipboardBatchTime > TimeSpan.FromMilliseconds(500))
                 clipboardBatch = new DataPackage();
             clipboardBatchTime = now;
-            if (type == "text/html") clipboardBatch.SetHtmlFormat(data); else clipboardBatch.SetText(data);
+            if (type == "text/html") clipboardBatch.SetHtmlFormat(data); else { clipboardBatch.SetText(data); lastCopiedText = data; }
             try { Clipboard.SetContent(clipboardBatch); } catch (Exception ex) { Services.Log.Error("set clipboard", ex); }
             return (object?)true;
         });
@@ -666,6 +671,10 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                     package.SetText(copyText);
                     try { Clipboard.SetContent(package); } catch (Exception ex) { Services.Log.Error("copy to clipboard", ex); }
                 });
+                break;
+            case "PasteRequested":
+                // The editor caught a paste the browser would have done itself (the bridge normally takes it first).
+                DispatcherQueue.TryEnqueue(async () => await PasteClipboardTextAsync());
                 break;
             case "ClipboardTextRequest":
                 // Paste from the page's context menu: WebKit refuses execCommand('paste'), so the host reads the

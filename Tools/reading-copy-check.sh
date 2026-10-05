@@ -16,7 +16,8 @@ cleanup() { [ -n "${PID:-}" ] && kill $PID 2>/dev/null; sleep 1; [ -n "${XV:-}" 
 
 mkdir -p $T/home $T/data/Typedown.Uno $T/run $T/docs && chmod 700 $T/run
 printf '{ "AllowLocalAutomation": false, "FileStartupAction": 0, "Language": "en" }' > $T/data/Typedown.Uno/settings.json
-printf '# Title **bold**\n\nAlpha *beta*.\n\n1. one\n2. two\n' > $T/docs/doc.md
+printf '# Title **bold**\n\nAlpha *beta* ![p](pic.png).\n\n1. one\n2. two\n' > $T/docs/doc.md
+printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\xdac\xfc\xcf\xc0P\x0f\x00\x04\x85\x01\x80\x84\xa9\x8c!\x00\x00\x00\x00IEND\xaeB`\x82' > $T/docs/pic.png
 
 Xvfb :$D -screen 0 1100x750x24 >/dev/null 2>&1 & XV=$!; sleep 1
 DISPLAY=:$D xfwm4 >/dev/null 2>&1 & sleep 1
@@ -47,7 +48,7 @@ menu() { # $1: row to click (1 Copy, 2 Copy as plain text)
 COPY=$(menu 1)
 case "$COPY" in *'**bold**'*Alpha*) pass "Copy gives the Markdown";; *) fail "Copy gave $(printf '%s' "$COPY" | head -c 200 | tr '\n' '|')";; esac
 PLAIN=$(menu 2)
-EXPECTED=$(printf 'Title bold\n\nAlpha beta.\n\n1. one\n2. twoX')
+EXPECTED=$(printf 'Title bold\n\nAlpha beta p.\n\n1. one\n2. twoX')
 [ "$PLAIN" = "$EXPECTED" ] && pass "Copy as plain text leaves the Markdown out" || fail "Copy as plain text gave $(printf '%s' "$PLAIN" | tr '\n' '|')"
 
 echo "OVERALL $([ $ok = 1 ] && echo PASS || echo FAIL)"
