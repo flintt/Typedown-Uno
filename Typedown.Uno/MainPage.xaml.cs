@@ -76,6 +76,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private bool nativeIconApplied;
     private DataPackage? clipboardBatch;
     private DateTime clipboardBatchTime;
+    private string? pendingClipboardHtml;
     // The text this app last put on the clipboard: pasted back, it is the Markdown it was copied as (PasteClipboardTextAsync).
     private static string? lastCopiedText;
 
@@ -533,6 +534,17 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             var type = args?["type"]?.GetValue<string>();
             var data = args?["data"]?.ToString() ?? "";
             var now = DateTime.UtcNow;
+            // Linux: through GTK, which offers the HTML too (Uno's X11 clipboard is text only, and a word processor
+            // got the Markdown source). The HTML waits for the text that follows it.
+            if (Services.GtkClipboard.IsAvailable)
+            {
+                if (type == "text/html") { pendingClipboardHtml = data; clipboardBatchTime = now; return (object?)true; }
+                var html = now - clipboardBatchTime < TimeSpan.FromMilliseconds(500) ? pendingClipboardHtml : null;
+                pendingClipboardHtml = null;
+                lastCopiedText = data;
+                Services.GtkClipboard.SetTextAndHtml(data, html);
+                return (object?)true;
+            }
             if (clipboardBatch == null || now - clipboardBatchTime > TimeSpan.FromMilliseconds(500))
                 clipboardBatch = new DataPackage();
             clipboardBatchTime = now;

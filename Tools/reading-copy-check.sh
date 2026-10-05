@@ -2,8 +2,11 @@
 # Reading mode, with real keys and the page's own context menu: Ctrl+Z after an edit changes nothing (the history's
 # undo replaced the text there), Ctrl+A selects the document, Copy puts the Markdown on the clipboard and Copy as plain
 # text the text without it. The menu's rows are clicked where they are drawn: Copy, Copy as plain text, then Select all.
+# Copy also offers the formatted copy (text/html, through GTK: Uno's clipboard is text only on X11), which LibreOffice
+# Writer pastes with its bold and its picture (Tools/lo-paste.py; skipped without LibreOffice).
 #
-# Runs the app under Xvfb + xfwm4 in an isolated profile. Needs Xvfb, xfwm4, xdotool, xclip.
+# Runs the app under Xvfb + xfwm4 in an isolated profile. Needs Xvfb, xfwm4, xdotool, xclip; LibreOffice with python3-uno
+# for the paste.
 #
 #   Tools/reading-copy-check.sh [path to Typedown.Uno] [display number]
 set -u
@@ -12,12 +15,15 @@ APP=${1:-$HERE/Typedown.Uno/bin/Debug/net9.0-desktop/Typedown.Uno}
 D=${2:-84}
 T=$(mktemp -d /tmp/typedown-reading-copy-check.XXXXXX)
 ok=1; pass() { echo "PASS $1"; }; fail() { echo "FAIL $1"; ok=0; }
-cleanup() { [ -n "${PID:-}" ] && kill $PID 2>/dev/null; sleep 1; [ -n "${XV:-}" ] && kill $XV 2>/dev/null; rm -rf "$T"; }
+cleanup() { [ -n "${LO:-}" ] && kill $LO 2>/dev/null; [ -n "${PID:-}" ] && kill $PID 2>/dev/null; sleep 1; [ -n "${XV:-}" ] && kill $XV 2>/dev/null; rm -rf "$T"; }
 
 mkdir -p $T/home $T/data/Typedown.Uno $T/run $T/docs && chmod 700 $T/run
 printf '{ "AllowLocalAutomation": false, "FileStartupAction": 0, "Language": "en" }' > $T/data/Typedown.Uno/settings.json
 printf '# Title **bold**\n\nAlpha *beta* ![p](pic.png).\n\n1. one\n2. two\n' > $T/docs/doc.md
-printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\xdac\xfc\xcf\xc0P\x0f\x00\x04\x85\x01\x80\x84\xa9\x8c!\x00\x00\x00\x00IEND\xaeB`\x82' > $T/docs/pic.png
+python3 -c "import zlib,struct
+def chunk(t,d): return struct.pack('>I',len(d))+t+d+struct.pack('>I',zlib.crc32(t+d))
+raw=b''.join(b'\\x00'+b'\\xff\\x00\\x00'*40 for _ in range(30))
+open('$T/docs/pic.png','wb').write(b'\\x89PNG\\r\\n\\x1a\\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',40,30,8,2,0,0,0))+chunk(b'IDAT',zlib.compress(raw))+chunk(b'IEND',b''))"
 
 Xvfb :$D -screen 0 1100x750x24 >/dev/null 2>&1 & XV=$!; sleep 1
 DISPLAY=:$D xfwm4 >/dev/null 2>&1 & sleep 1
@@ -47,6 +53,19 @@ menu() { # $1: row to click (1 Copy, 2 Copy as plain text)
 }
 COPY=$(menu 1)
 case "$COPY" in *'**bold**'*Alpha*) pass "Copy gives the Markdown";; *) fail "Copy gave $(printf '%s' "$COPY" | head -c 200 | tr '\n' '|')";; esac
+HTML=$(timeout 5 xclip -o -selection clipboard -t text/html 2>/dev/null)
+case "$HTML" in *'<strong>bold</strong>'*"src=\"file://$T/docs/pic.png\""*) pass "Copy offers the formatted copy (text/html), the picture at its file address";;
+  *) fail "Copy's text/html: $(printf '%s' "$HTML" | head -c 300 | tr '\n' '|')";; esac
+if command -v soffice >/dev/null && python3 -c 'import uno' 2>/dev/null; then
+  soffice --invisible --norestore --nologo -env:UserInstallation=file://$T/lo "--accept=socket,host=localhost,port=2$D;urp;" >/dev/null 2>&1 & LO=$!
+  WRITER=$(timeout 90 python3 "$HERE/Tools/lo-paste.py" 2$D 2>&1 | tail -1)
+  case "$WRITER" in *'"bold": true'*'"pictures": [{'*) pass "LibreOffice Writer pastes the copy with its bold and its picture";;
+    *) fail "LibreOffice Writer pasted: $(printf '%s' "$WRITER" | head -c 300)";; esac
+  kill $LO 2>/dev/null; LO=
+  xdotool windowactivate --sync $W; sleep 0.5
+else
+  echo "(no LibreOffice with python3-uno: the paste into Writer is not tried)"
+fi
 PLAIN=$(menu 2)
 EXPECTED=$(printf 'Title bold\n\nAlpha beta p.\n\n1. one\n2. twoX')
 [ "$PLAIN" = "$EXPECTED" ] && pass "Copy as plain text leaves the Markdown out" || fail "Copy as plain text gave $(printf '%s' "$PLAIN" | tr '\n' '|')"
