@@ -526,14 +526,19 @@
     // this the editor would embed a multi-megabyte data: URL in the Markdown.
     window.addEventListener('paste', function (e) {
         var items = e.clipboardData && e.clipboardData.items;
-        var hasText = false;
-        for (var k = 0; items && k < items.length; k++) if (items[k].kind === 'string') hasText = true;
+        // Text means plain text: a picture copied in a browser comes as image/png and text/html with no plain text,
+        // and was taken for text, found none and pasted nothing.
+        var hasText = false, types = [];
+        for (var k = 0; items && k < items.length; k++) {
+            types.push(items[k].kind + ':' + items[k].type);
+            if (items[k].kind === 'string' && items[k].type === 'text/plain') hasText = true;
+        }
         if (!items || !items.length || (!hasText && !hasImage(items))) {
             // WebKit does not always expose the X11 clipboard to the page. The host can distinguish text from
             // images and use the native clipboard API when the page receives no items.
             e.preventDefault();
             e.stopImmediatePropagation();
-            send(JSON.stringify({ type: 'message', name: 'ClipboardPasteRequest', args: {} }));
+            send(JSON.stringify({ type: 'message', name: 'ClipboardPasteRequest', args: { types: types } }));
             return;
         }
         for (var i = 0; i < items.length; i++) {

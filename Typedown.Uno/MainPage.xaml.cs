@@ -653,8 +653,10 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                 DispatcherQueue.TryEnqueue(async () => await InsertClipboardImageAsync());
                 break;
             case "ClipboardPasteRequest":
-                // Some WebKit/X11 combinations expose no DataTransferItem entries. Inspecting the native
-                // clipboard lets the host distinguish an image from text and keeps text on the repair path.
+                // Some WebKit/X11 combinations expose no DataTransferItem entries, and a picture copied in a browser
+                // comes as image/png and text/html with no plain text. Inspecting the native clipboard lets the host
+                // distinguish an image from text and keeps text on the repair path.
+                Services.Log.Write($"paste through the host (the page saw: {args?["types"]?.ToJsonString() ?? "nothing"})");
                 DispatcherQueue.TryEnqueue(async () => await PasteClipboardContentAsync());
                 break;
             case "ReplaceImageRequest":
@@ -836,6 +838,12 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     {
         try
         {
+            // Linux: the picture through GTK (Uno's X11 clipboard hands out none).
+            if (Services.GtkClipboard.IsAvailable && await Services.GtkClipboard.ReadImageAsync() is { } picture)
+            {
+                await InsertImageBytesAsync(picture.bytes, picture.type switch { "image/jpeg" => ".jpg", "image/gif" => ".gif", "image/webp" => ".webp", "image/bmp" => ".bmp", _ => ".png" });
+                return;
+            }
             var view = Clipboard.GetContent();
             if (view == null) return;
             if (view.Contains(StandardDataFormats.Bitmap) ||
@@ -891,23 +899,30 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                     return;
                 }
             }
-            string link;
-            if (settings.ImageAction == ImageInsertAction.Upload)
-            {
-                // Uploaded from a file of its own, which goes again once the picture is online.
-                var temp = Path.Combine(Path.GetTempPath(), $"typedown-clipboard-{DateTime.Now:yyyyMMdd-HHmmss}{extension}");
-                await File.WriteAllBytesAsync(temp, bytes);
-                try { link = await UploadOrKeepAsync(temp, keepOnFailure: () => ImagePaths.SaveImageBytes(bytes, extension, document.FilePath, settings)); }
-                finally { try { File.Delete(temp); } catch { } }
-            }
-            else link = ImagePaths.SaveImageBytes(bytes, extension, document.FilePath, settings);
-            await PostInsertImage(link, "image");
-            SetStatus(link);
+            await InsertImageBytesAsync(bytes, extension);
         }
         catch (Exception ex)
         {
             Services.Log.Error("clipboard image", ex);
         }
+    }
+
+    /// <summary>A pasted picture into the document: saved next to it or uploaded, as Settings > Images says.</summary>
+    private async Task InsertImageBytesAsync(byte[] bytes, string extension)
+    {
+        if (document == null) return;
+        string link;
+        if (settings.ImageAction == ImageInsertAction.Upload)
+        {
+            // Uploaded from a file of its own, which goes again once the picture is online.
+            var temp = Path.Combine(Path.GetTempPath(), $"typedown-clipboard-{DateTime.Now:yyyyMMdd-HHmmss}{extension}");
+            await File.WriteAllBytesAsync(temp, bytes);
+            try { link = await UploadOrKeepAsync(temp, keepOnFailure: () => ImagePaths.SaveImageBytes(bytes, extension, document.FilePath, settings)); }
+            finally { try { File.Delete(temp); } catch { } }
+        }
+        else link = ImagePaths.SaveImageBytes(bytes, extension, document.FilePath, settings);
+        await PostInsertImage(link, "image");
+        SetStatus(link);
     }
 
     private static async Task<byte[]> ReadAllAsync(Windows.Storage.Streams.IRandomAccessStream stream)

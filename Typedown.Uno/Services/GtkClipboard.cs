@@ -34,6 +34,14 @@ public static class GtkClipboard
     [DllImport(LibGtk)] private static extern IntPtr gtk_selection_data_get_target(IntPtr selectionData);
     [DllImport(LibGtk)] private static extern void gtk_selection_data_set(IntPtr selectionData, IntPtr type, int format, byte[] data, int length);
     [DllImport(LibGtk)] private static extern bool gtk_selection_data_set_text(IntPtr selectionData, byte[] utf8, int length);
+    [DllImport(LibGtk)] private static extern void gtk_clipboard_request_targets(IntPtr clipboard, TargetsReceived callback, IntPtr userData);
+    [DllImport(LibGtk)] private static extern void gtk_clipboard_request_contents(IntPtr clipboard, IntPtr target, ContentsReceived callback, IntPtr userData);
+    [DllImport(LibGtk)] private static extern IntPtr gtk_selection_data_get_data_with_length(IntPtr selectionData, out int length);
+    [DllImport(LibGdk)] private static extern IntPtr gdk_atom_name(IntPtr atom);
+    [DllImport(LibGLib)] private static extern void g_free(IntPtr memory);
+
+    private delegate void TargetsReceived(IntPtr clipboard, IntPtr atoms, int count, IntPtr userData);
+    private delegate void ContentsReceived(IntPtr clipboard, IntPtr selectionData, IntPtr userData);
 
     private const uint HtmlTarget = 1, TextTarget = 2;
 
@@ -72,6 +80,62 @@ public static class GtkClipboard
             return false; // once
         };
         g_idle_add(pending, IntPtr.Zero);
+    }
+
+    // The picture types a paste takes, in the order it prefers them.
+    private static readonly string[] ImageTypes = { "image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp" };
+    private static TargetsReceived? targetsReceived;
+    private static ContentsReceived? contentsReceived;
+
+    /// <summary>
+    /// The picture on the clipboard and its type, or null when it holds none (or no answer within 5 s). Uno's clipboard
+    /// on X11 hands out no pictures, so a picture copied in a browser or an image viewer pasted as nothing.
+    /// </summary>
+    public static async Task<(byte[] bytes, string type)?> ReadImageAsync()
+    {
+        var done = new TaskCompletionSource<(byte[] bytes, string type)?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        string? chosen = null;
+        contentsReceived = (_, selectionData, _) =>
+        {
+            try
+            {
+                var length = 0;
+                var data = selectionData == IntPtr.Zero ? IntPtr.Zero : gtk_selection_data_get_data_with_length(selectionData, out length);
+                if (data == IntPtr.Zero || length <= 0) { done.TrySetResult(null); return; }
+                var bytes = new byte[length];
+                Marshal.Copy(data, bytes, 0, length);
+                done.TrySetResult((bytes, chosen!));
+            }
+            catch (Exception ex) { Log.Error("gtk clipboard (picture)", ex); done.TrySetResult(null); }
+        };
+        targetsReceived = (clipboard, atoms, count, _) =>
+        {
+            try
+            {
+                var offered = new List<string>();
+                for (var i = 0; i < count; i++)
+                {
+                    var name = gdk_atom_name(Marshal.ReadIntPtr(atoms, i * IntPtr.Size));
+                    if (name == IntPtr.Zero) continue;
+                    offered.Add(Marshal.PtrToStringUTF8(name) ?? "");
+                    g_free(name);
+                }
+                chosen = ImageTypes.FirstOrDefault(offered.Contains);
+                Log.Write($"clipboard offers: {string.Join(", ", offered)}");
+                if (chosen == null) { done.TrySetResult(null); return; }
+                gtk_clipboard_request_contents(clipboard, gdk_atom_intern(chosen, false), contentsReceived, IntPtr.Zero);
+            }
+            catch (Exception ex) { Log.Error("gtk clipboard (targets)", ex); done.TrySetResult(null); }
+        };
+        pending = _ =>
+        {
+            try { gtk_clipboard_request_targets(gtk_clipboard_get(gdk_atom_intern("CLIPBOARD", false)), targetsReceived, IntPtr.Zero); }
+            catch (Exception ex) { Log.Error("gtk clipboard (request)", ex); done.TrySetResult(null); }
+            return false;
+        };
+        g_idle_add(pending, IntPtr.Zero);
+        var finished = await Task.WhenAny(done.Task, Task.Delay(5000));
+        return finished == done.Task ? done.Task.Result : null;
     }
 
     private static void OnGet(IntPtr clipboard, IntPtr selectionData, uint info, IntPtr userData)
