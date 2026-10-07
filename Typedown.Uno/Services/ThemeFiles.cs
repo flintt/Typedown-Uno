@@ -97,7 +97,10 @@ public static class ThemeFiles
     public static async Task OpenDesignerAsync(string? selectedId)
     {
         var path = await PrepareDesignerAsync(selectedId);
-        Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+        // Through a loopback address, not the file: a browser packaged as a Snap or a Flatpak may not read
+        // ~/.local/share and answered "access denied". The file stays where it was, for when no listener can start.
+        var address = LocalPageServer.Serve("theme-designer.html", await File.ReadAllTextAsync(path)) ?? path;
+        Process.Start(new ProcessStartInfo(address) { UseShellExecute = true });
     }
 
     public static async Task<string> PrepareDesignerAsync(string? selectedId)

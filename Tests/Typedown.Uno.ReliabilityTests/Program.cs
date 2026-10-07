@@ -147,6 +147,23 @@ try
     var session = SessionMemory.Load();
     Check(session?.Documents.Count == 2 && session.Documents[1].DocumentId == secondDraft && session.ActiveIndex == 1,
         "session preserves multiple untitled document ids and the active tab");
+
+    // The theme designer through a loopback address (a Snap or Flatpak browser may not read ~/.local/share): the page
+    // at the address given, nothing without the random token in the path, and the newest page under its name.
+    using (var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) })
+    {
+        var address = LocalPageServer.Serve("theme-designer.html", "<html>first 中文</html>");
+        Check(address != null && address.StartsWith("http://127.0.0.1:"), "local page: served at a loopback address");
+        if (address != null)
+        {
+            var page = await http.GetAsync(address);
+            Check(page.IsSuccessStatusCode && await page.Content.ReadAsStringAsync() == "<html>first 中文</html>", "local page: the page is there, its text as given");
+            var guessed = new Uri(address).GetLeftPart(UriPartial.Authority) + "/theme-designer.html";
+            Check((int)(await http.GetAsync(guessed)).StatusCode == 404, "local page: without the token in the path, nothing");
+            var again = LocalPageServer.Serve("theme-designer.html", "<html>second</html>");
+            Check(again == address && await (await http.GetAsync(again!)).Content.ReadAsStringAsync() == "<html>second</html>", "local page: served again, the same address with the new page");
+        }
+    }
 }
 finally
 {

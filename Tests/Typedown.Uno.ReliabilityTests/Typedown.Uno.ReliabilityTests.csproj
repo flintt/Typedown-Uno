@@ -12,5 +12,6 @@
     <Compile Include="../../Typedown.Uno/Services/CursorMemory.cs" Link="Services/CursorMemory.cs" />
     <Compile Include="../../Typedown.Uno/Services/SessionMemory.cs" Link="Services/SessionMemory.cs" />
     <Compile Include="../../Typedown.Uno/Services/CredentialStore.cs" Link="Services/CredentialStore.cs" />
+    <Compile Include="../../Typedown.Uno/Services/LocalPageServer.cs" Link="Services/LocalPageServer.cs" />
   </ItemGroup>
 </Project>
