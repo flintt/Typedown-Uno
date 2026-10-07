@@ -129,6 +129,11 @@ public sealed class TabsViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(ActiveTab)); // reset a TabView selection that already moved visually
             return;
         }
+        // Looked at again after the wait: closing a tab removes it from the strip, the strip selects the neighbour and
+        // asks for it here, and the close then shows that very tab itself - the same document loaded twice, the first
+        // load's reports dropped as stale and the second not reported again: the outline stayed on the closed
+        // document (Typedown 00ff51d, E2E TC02).
+        if (tab == ActiveTab || !Tabs.Contains(tab)) return;
         switching = true;
         try
         {
