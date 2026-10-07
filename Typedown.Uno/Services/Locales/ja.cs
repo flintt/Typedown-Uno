@@ -33,6 +33,7 @@ public static partial class LocaleTables
         ["IncreaseHeading"] = "見出しレベルを上げる",
         ["DecreaseHeading"] = "見出しレベルを下げる",
         ["Table"] = "表…",
+        ["ResizeTable"] = "表のサイズを変更",
         ["CodeFences"] = "コードブロック",
         ["MathBlock"] = "数式ブロック",
         ["Quote"] = "引用",

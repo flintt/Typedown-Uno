@@ -526,7 +526,10 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             return (object)result;
         });
         t.Handle("LoadImage", args => new { url = args?["url"]?.GetValue<string>() ?? "" });
-        t.Handle("ResizeTable", args => new { row = args?["row"]?.GetValue<int>() ?? 2, column = args?["column"]?.GetValue<int>() ?? 2 });
+        // The table toolbar's Resize table: the page sends the table's size (rows with the header row, and columns) and
+        // takes back the new one, or nothing when cancelled. This answered with what it was sent, under other names
+        // (row, column), so the page got no size at all and nothing could be resized.
+        t.Handle("ResizeTable", async args => await ResizeTableAsync(args?["rows"]?.GetValue<int>() ?? 0, args?["columns"]?.GetValue<int>() ?? 0));
         t.Handle("SetClipboard", args =>
         {
             // One copy arrives as two calls (text/html then text/plain). A fresh package per call would leave
@@ -2161,6 +2164,16 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         {
             if (settingsDialog == dialog) settingsDialog = null;
         }
+    }
+
+    /// <summary>Resize table, starting from the table's own size; null when cancelled.</summary>
+    private async Task<object?> ResizeTableAsync(int rows, int columns)
+    {
+        var rowBox = new NumberBox { Header = "Rows", Value = rows > 0 ? rows : 3, Minimum = 1, Maximum = 50, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Inline };
+        var columnBox = new NumberBox { Header = "Columns", Value = columns > 0 ? columns : 3, Minimum = 1, Maximum = 20, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Inline };
+        var dialog = new ContentDialog { Title = Loc.Get("ResizeTable"), Content = new StackPanel { Spacing = 8, Children = { rowBox, columnBox } }, PrimaryButtonText = Loc.Get("OK"), CloseButtonText = Loc.Get("Cancel"), XamlRoot = XamlRoot, RequestedTheme = DialogTheme };
+        if (await ShowDialogAsync(dialog) != ContentDialogResult.Primary) return null;
+        return new { rows = (int)rowBox.Value, columns = (int)columnBox.Value };
     }
 
     private async Task InsertTableAsync()

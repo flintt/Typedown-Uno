@@ -33,6 +33,7 @@ public static partial class LocaleTables
         ["IncreaseHeading"] = "제목 수준 올리기",
         ["DecreaseHeading"] = "제목 수준 내리기",
         ["Table"] = "표…",
+        ["ResizeTable"] = "표 크기 조정",
         ["CodeFences"] = "코드 블록",
         ["MathBlock"] = "수식 블록",
         ["Quote"] = "인용",

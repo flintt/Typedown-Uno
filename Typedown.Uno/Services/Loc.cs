@@ -32,7 +32,7 @@ public static class Loc
         ["LargeDocumentSourceMode"] = "A {0}k-character document opens in source mode; the View menu switches back.", ["ExportPdf"] = "Export PDF…", ["ExportImage"] = "Export picture…", ["ImageFailed"] = "The picture could not be written.", ["ImportHtml"] = "Import HTML…", ["CmdExportPdf"] = "Export PDF", ["Exporting"] = "Exporting…",
         ["PdfFailed"] = "The PDF could not be written.", ["PdfUnavailable"] = "PDF export needs WebKitGTK, which is not available here.",
         ["Paragraph"] = "Paragraph", ["Heading"] = "Heading", ["HeadingN"] = "Heading {0}", ["ParagraphPlain"] = "Paragraph", ["IncreaseHeading"] = "Increase heading level",
-        ["DecreaseHeading"] = "Decrease heading level", ["Table"] = "Table…", ["CodeFences"] = "Code fences", ["MathBlock"] = "Math block", ["Quote"] = "Quote",
+        ["DecreaseHeading"] = "Decrease heading level", ["Table"] = "Table…", ["ResizeTable"] = "Resize Table", ["CodeFences"] = "Code fences", ["MathBlock"] = "Math block", ["Quote"] = "Quote",
         ["QuoteIncrease"] = "Increase quote level", ["QuoteDecrease"] = "Decrease quote level", ["OrderedList"] = "Ordered list", ["UnorderedList"] = "Unordered list",
         ["TaskList"] = "Task list", ["InsertBefore"] = "Insert paragraph before", ["InsertAfter"] = "Insert paragraph after", ["Chart"] = "Diagram", ["Mermaid"] = "Mermaid",
         ["FlowChart"] = "Flowchart", ["Sequence"] = "Sequence diagram", ["VegaLite"] = "Vega-Lite", ["PlantUml"] = "PlantUML", ["HorizontalLine"] = "Horizontal line",

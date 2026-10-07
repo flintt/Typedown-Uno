@@ -33,6 +33,7 @@ public static partial class LocaleTables
         ["IncreaseHeading"] = "Überschriftenebene erhöhen",
         ["DecreaseHeading"] = "Überschriftenebene verringern",
         ["Table"] = "Tabelle…",
+        ["ResizeTable"] = "Tabellengröße ändern",
         ["CodeFences"] = "Codeblock",
         ["MathBlock"] = "Formelblock",
         ["Quote"] = "Zitat",

@@ -33,6 +33,7 @@ public static partial class LocaleTables
         ["IncreaseHeading"] = "提升標題級別",
         ["DecreaseHeading"] = "降低標題級別",
         ["Table"] = "表格…",
+        ["ResizeTable"] = "調整表格大小",
         ["CodeFences"] = "程式碼塊",
         ["MathBlock"] = "公式塊",
         ["Quote"] = "引用",
