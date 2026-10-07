@@ -1,5 +1,7 @@
 name: Build
 
+# With the repository variable BUILD_ON_PUSH set to 'false', a push builds only when its last commit message says [ci];
+# a version tag, a pull request and Actions > Run workflow build as before (the same rule as the Windows editions).
 on:
   push:
     branches: [ main ]
@@ -18,6 +20,7 @@ env:
 jobs:
   checks:
     name: Check generated assets
+    if: github.event_name != 'push' || github.ref_type == 'tag' || vars.BUILD_ON_PUSH != 'false' || contains(github.event.head_commit.message, '[ci]')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,6 +34,7 @@ jobs:
 
   reliability:
     name: Reliability tests
+    if: github.event_name != 'push' || github.ref_type == 'tag' || vars.BUILD_ON_PUSH != 'false' || contains(github.event.head_commit.message, '[ci]')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,7 +48,7 @@ jobs:
     needs: [checks, reliability]
     # A release pushes the version bump to main and then the tag, which used to start the same build twice.
     # The tag run is the one that publishes, so the branch run for a version commit is skipped.
-    if: github.ref_type == 'tag' || !startsWith(github.event.head_commit.message, 'Version ')
+    if: (github.event_name != 'push' || github.ref_type == 'tag' || vars.BUILD_ON_PUSH != 'false' || contains(github.event.head_commit.message, '[ci]')) && (github.ref_type == 'tag' || !startsWith(github.event.head_commit.message, 'Version '))
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
