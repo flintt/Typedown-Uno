@@ -725,6 +725,11 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                     catch (Exception ex) { Services.Log.Write($"vim {command}: {ex.Message}"); }
                 });
                 break;
+            case "PageError":
+                // A script error in the editor page (uno-bridge.js forwards them): one that unmounts the editor leaves the
+                // page blank and deaf to the host, and without this the log only said "the editor is not responding".
+                Services.Log.Write($"page error: {args?["message"]} at {args?["source"]}:{args?["line"]}:{args?["column"]}\n{args?["stack"]}");
+                break;
             case "Shortcut":
                 var key = args?["key"]?.GetValue<string>() ?? "";
                 var ctrl = args?["ctrl"]?.GetValue<bool>() ?? false;

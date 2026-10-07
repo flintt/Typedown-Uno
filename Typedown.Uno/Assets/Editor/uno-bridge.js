@@ -23,6 +23,24 @@
     // Shell shortcuts pressed while the (native) web view has focus never reach the host window on Linux/macOS,
     // so forward the ones the shell handles as a "Shortcut" message. The editor keeps its own (Ctrl+B/I/…).
     // Which key presses the shell wants back; replaced by the host (see "ShortcutMap") once it knows the bindings.
+    // Script errors to the host's log: an error that unmounts the editor leaves a blank page that answers nothing, and
+    // the log said only that the editor was not responding. At most 50 per page, so a loop cannot flood it.
+    var errorsSent = 0;
+    function reportError(message, source, line, column, stack) {
+        if (errorsSent++ >= 50) return;
+        try {
+            send(JSON.stringify({ type: 'message', name: 'PageError', args: {
+                message: String(message || ''), source: String(source || '').split('/').pop(), line: line || 0, column: column || 0,
+                stack: String(stack || '').slice(0, 2000) } }));
+        } catch (e) { }
+    }
+    window.addEventListener('error', function (e) {
+        reportError(e.message, e.filename, e.lineno, e.colno, e.error && e.error.stack);
+    });
+    window.addEventListener('unhandledrejection', function (e) {
+        var r = e.reason;
+        reportError('unhandled rejection: ' + (r && r.message || r), '', 0, 0, r && r.stack);
+    });
     var forwarded = [];
     var findShortcut = { key: 'f', ctrl: true, shift: false, alt: false };
     window.addEventListener('keydown', function (e) {
