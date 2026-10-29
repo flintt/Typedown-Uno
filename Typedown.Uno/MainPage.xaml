@@ -5,6 +5,9 @@
       xmlns:vm="using:Typedown.Uno.ViewModels"
       Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
   <Page.Resources>
+    <MenuFlyout x:Key="TabContextFlyout" Opening="OnTabContextFlyoutOpening">
+      <MenuFlyoutItem x:Name="TabFavoriteMenuItem" Click="OnTabFavoriteClick"/>
+    </MenuFlyout>
     <DataTemplate x:Key="FolderItemTemplate" x:DataType="vm:FolderItem">
       <TreeViewItem ItemsSource="{x:Bind Children}" IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}">
         <StackPanel Orientation="Horizontal" Spacing="6" Height="28">
@@ -188,7 +191,8 @@
                  AddTabButtonClick="OnAddTabClick" TabCloseRequested="OnTabCloseRequested" SelectionChanged="OnTabSelectionChanged">
           <TabView.TabItemTemplate>
             <DataTemplate x:DataType="vm:DocumentTab">
-              <TabViewItem Header="{x:Bind DisplayTitle, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ToolTip, Mode=OneWay}">
+              <TabViewItem Header="{x:Bind DisplayTitle, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ToolTip, Mode=OneWay}"
+                           ContextFlyout="{StaticResource TabContextFlyout}" AllowFocusOnInteraction="False">
                 <TabViewItem.IconSource>
                   <FontIconSource Glyph="&#xE8A5;" FontSize="12"/>
                 </TabViewItem.IconSource>

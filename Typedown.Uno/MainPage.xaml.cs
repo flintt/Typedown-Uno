@@ -90,6 +90,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private string? startupFile;
     private string? workFolder;
     private FolderItem? folderRoot;
+    private DocumentTab? contextMenuTab;
     private readonly ObservableCollection<FavoriteItem> favoriteItems = [];
     private CancellationTokenSource? pendingSingleClick;
     private CancellationTokenSource? searchCts;
@@ -2185,6 +2186,24 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private async void OnTabCloseRequested(TabView sender, TabViewTabCloseRequestedEventArgs args)
     {
         if (args.Item is DocumentTab tab && tabs != null) await tabs.CloseTabAsync(tab);
+    }
+
+    private void OnTabContextFlyoutOpening(object sender, object e)
+    {
+        if (sender is not MenuFlyout flyout) return;
+        contextMenuTab = (flyout.Target as FrameworkElement)?.DataContext as DocumentTab;
+        var path = contextMenuTab?.FilePath;
+        var favorite = path != null && settings.IsFavorite(path);
+        if (flyout.Items.FirstOrDefault() is MenuFlyoutItem item)
+        {
+            item.Text = Loc.Get(favorite ? "RemoveFavorite" : "AddFavorite");
+            item.IsEnabled = path != null;
+        }
+    }
+
+    private void OnTabFavoriteClick(object sender, RoutedEventArgs e)
+    {
+        if (contextMenuTab?.FilePath is { } path) settings.ToggleFavorite(path);
     }
 
     private async void OnAddTabClick(TabView sender, object args)
