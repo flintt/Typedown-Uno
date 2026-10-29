@@ -118,7 +118,10 @@ const preload = `(() => {
       new MouseEvent('mouseover', { bubbles: true, cancelable: true }))`);
     await wait('diagram copy button', `(() => {
       const button = document.querySelector('#uno-diagram-copy');
-      return button && button.style.display === 'block' && button.getAttribute('aria-label') === 'Copy content';
+      const codeButton = document.querySelector('figure[data-role="MERMAID"] pre .ag-code-copy');
+      return button && codeButton && button.style.display === 'block' && button.getAttribute('aria-label') === 'Copy content'
+        && button.classList.contains('ag-code-copy') && getComputedStyle(button).width === getComputedStyle(codeButton).width
+        && button.querySelector('svg rect')?.getAttribute('x') === codeButton.querySelector('svg rect')?.getAttribute('x');
     })()`);
     await run(`document.querySelector('#uno-diagram-copy').dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true }))`);
