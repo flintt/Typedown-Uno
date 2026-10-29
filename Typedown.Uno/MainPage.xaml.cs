@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices.WindowsRuntime;
+using System.Collections.ObjectModel;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -91,6 +92,13 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private FolderItem? folderRoot;
     private CancellationTokenSource? pendingSingleClick;
     private CancellationTokenSource? searchCts;
+    private ObservableCollection<SearchResultItem>? searchVisibleResults;
+    private readonly List<SearchResultItem> searchNameResults = [];
+    private readonly List<SearchResultItem> searchContentResults = [];
+    private SearchResultItem? searchNamesGroup;
+    private SearchResultItem? searchContentsGroup;
+    private bool searchNamesExpanded = true;
+    private bool searchContentsExpanded = true;
     private bool suppressTabSelection;
     private bool documentFindOpen;
     private string? findDocumentId;
@@ -1934,12 +1942,22 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private void OnSearchTextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs e)
     {
         searchCts?.Cancel();
+        searchNameResults.Clear();
+        searchContentResults.Clear();
+        searchNamesGroup = null;
+        searchContentsGroup = null;
+        searchVisibleResults = null;
         var query = SearchBox.Text.Trim();
         var root = workFolder;
         if (query.Length == 0 || root == null) { SearchResults.ItemsSource = null; SearchStatus.Text = root == null ? Loc.Get("NoFolder") : ""; return; }
         var cts = searchCts = new CancellationTokenSource();
-        var results = new System.Collections.ObjectModel.ObservableCollection<SearchResultItem>();
-        var named = new Dictionary<string, SearchResultItem>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        var results = searchVisibleResults = new ObservableCollection<SearchResultItem>();
+        searchNamesGroup = new SearchResultItem { Kind = SearchMatchKind.NameGroup };
+        searchContentsGroup = new SearchResultItem { Kind = SearchMatchKind.ContentGroup };
+        searchNamesGroup.SetGroupStatus(0, searchNamesExpanded);
+        searchContentsGroup.SetGroupStatus(0, searchContentsExpanded);
+        results.Add(searchNamesGroup);
+        results.Add(searchContentsGroup);
         SearchResults.ItemsSource = results;
         SearchStatus.Text = "…";
         _ = Task.Run(async () =>
@@ -1950,13 +1968,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                 var (_, hits) = FolderSearch.Run(root, query, item => DispatcherQueue.TryEnqueue(() =>
                 {
                     if (cts.IsCancellationRequested) return;
-                    if (item.Kind == SearchMatchKind.AlsoContent)
-                    {
-                        if (named.TryGetValue(item.FullPath, out var original)) original.MarkAlsoContent(item.Snippet);
-                        return;
-                    }
-                    if (item.Kind == SearchMatchKind.Name && !item.IsFolder) named[item.FullPath] = item;
-                    results.Add(item);
+                    AddFolderSearchResult(item);
                 }), cts.Token);
                 DispatcherQueue.TryEnqueue(() => { if (!cts.IsCancellationRequested) SearchStatus.Text = hits == 0 ? Loc.Get("NoResults") : Loc.Format("SearchHits", hits); });
             }
@@ -1964,9 +1976,60 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         }, cts.Token);
     }
 
+    private void AddFolderSearchResult(SearchResultItem item)
+    {
+        if (searchVisibleResults == null || searchNamesGroup == null || searchContentsGroup == null) return;
+        if (item.Kind == SearchMatchKind.Name)
+        {
+            searchNameResults.Add(item);
+            searchNamesGroup.SetGroupStatus(searchNameResults.Count, searchNamesExpanded);
+            if (searchNamesExpanded) searchVisibleResults.Insert(searchVisibleResults.IndexOf(searchContentsGroup), item);
+        }
+        else if (item.Kind == SearchMatchKind.Content)
+        {
+            searchContentResults.Add(item);
+            searchContentsGroup.SetGroupStatus(searchContentResults.Count, searchContentsExpanded);
+            if (searchContentsExpanded) searchVisibleResults.Add(item);
+        }
+    }
+
+    private void ToggleFolderSearchGroup(SearchResultItem group)
+    {
+        if (searchVisibleResults == null || searchNamesGroup == null || searchContentsGroup == null) return;
+        if (ReferenceEquals(group, searchNamesGroup))
+        {
+            searchNamesExpanded = !searchNamesExpanded;
+            group.SetGroupStatus(searchNameResults.Count, searchNamesExpanded);
+            if (searchNamesExpanded)
+            {
+                for (var i = 0; i < searchNameResults.Count; i++) searchVisibleResults.Insert(i + 1, searchNameResults[i]);
+            }
+            else
+            {
+                for (var i = 0; i < searchNameResults.Count; i++) searchVisibleResults.RemoveAt(1);
+            }
+        }
+        else if (ReferenceEquals(group, searchContentsGroup))
+        {
+            searchContentsExpanded = !searchContentsExpanded;
+            group.SetGroupStatus(searchContentResults.Count, searchContentsExpanded);
+            var start = searchVisibleResults.IndexOf(searchContentsGroup) + 1;
+            if (searchContentsExpanded)
+            {
+                for (var i = 0; i < searchContentResults.Count; i++) searchVisibleResults.Insert(start + i, searchContentResults[i]);
+            }
+            else
+            {
+                for (var i = 0; i < searchContentResults.Count; i++) searchVisibleResults.RemoveAt(start);
+            }
+        }
+    }
+
     private async void OnSearchResultClick(object sender, ItemClickEventArgs e)
     {
-        if (e.ClickedItem is not SearchResultItem item || tabs == null) return;
+        if (e.ClickedItem is not SearchResultItem item) return;
+        if (item.IsGroup) { ToggleFolderSearchGroup(item); return; }
+        if (tabs == null) return;
         if (item.IsFolder)
         {
             SetWorkFolder(item.FullPath, explicitChoice: true);

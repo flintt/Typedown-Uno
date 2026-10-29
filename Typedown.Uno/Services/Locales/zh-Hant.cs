@@ -94,6 +94,8 @@ public static partial class LocaleTables
         ["NoHeadings"] = "沒有標題",
         ["NoResults"] = "沒有結果",
         ["Results"] = "{0} 個檔案中有 {1} 處匹配",
+        ["SearchNames"] = "檔名相符",
+        ["SearchContents"] = "內容相符",
         ["Untitled"] = "未命名",
         ["Words"] = "{0} 字",
         ["SaveChanges"] = "儲存更改？",

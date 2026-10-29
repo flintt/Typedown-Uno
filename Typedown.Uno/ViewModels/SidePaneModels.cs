@@ -87,7 +87,7 @@ public sealed class OutlineItem
     }
 }
 
-public enum SearchMatchKind { Name, Content, AlsoContent }
+public enum SearchMatchKind { Name, Content, NameGroup, ContentGroup }
 
 public sealed class SearchResultItem : INotifyPropertyChanged
 {
@@ -97,21 +97,24 @@ public sealed class SearchResultItem : INotifyPropertyChanged
     public string RelativePath { get; init; } = "";
     public SearchMatchKind Kind { get; init; }
     public bool IsFolder { get; init; }
-    public string GroupHeading { get; init; } = "";
-    public Microsoft.UI.Xaml.Visibility GroupHeaderVisibility => GroupHeading.Length == 0 ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
+    public bool IsGroup => Kind is SearchMatchKind.NameGroup or SearchMatchKind.ContentGroup;
+    private int groupCount;
+    private bool groupExpanded = true;
+    public string GroupHeading => !IsGroup ? "" : $"{(groupExpanded ? '▾' : '▸')} {Loc.Get(Kind == SearchMatchKind.NameGroup ? "SearchNames" : "SearchContents")} ({groupCount})";
+    public Microsoft.UI.Xaml.Visibility GroupHeaderVisibility => IsGroup ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+    public Microsoft.UI.Xaml.Visibility ResultVisibility => IsGroup ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
     public string Snippet { get; init; } = "";
-    private string? alsoContentSnippet;
-    public bool ContentMatched => Kind == SearchMatchKind.Content || alsoContentSnippet != null;
+    public bool ContentMatched => Kind == SearchMatchKind.Content;
     public string DisplaySnippet => Kind == SearchMatchKind.Name
-        ? alsoContentSnippet == null ? Loc.Get(IsFolder ? "FolderName" : "FileName") : Loc.Get("SearchAlsoInContent") + " · " + alsoContentSnippet
+        ? Loc.Get(IsFolder ? "FolderName" : "FileName")
         : Snippet;
 
-    public void MarkAlsoContent(string snippet)
+    public void SetGroupStatus(int count, bool expanded)
     {
-        if (alsoContentSnippet != null) return;
-        alsoContentSnippet = snippet;
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DisplaySnippet)));
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ContentMatched)));
+        if (!IsGroup || groupCount == count && groupExpanded == expanded) return;
+        groupCount = count;
+        groupExpanded = expanded;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GroupHeading)));
     }
 }
 
@@ -121,10 +124,9 @@ public static class FolderSearch
     private const int ContentCap = 200;
     private const long MaxFileBytes = 8 * 1024 * 1024;
 
-    /// <summary>Names first (including folders), then file contents. A file matching both is one name row.</summary>
+    /// <summary>Names first (including folders), then file contents. A file matching both appears in both groups.</summary>
     public static (int files, int hits) Run(string root, string query, Action<SearchResultItem> report, CancellationToken token)
     {
-        var namedFiles = new HashSet<string>(StringComparer.Ordinal);
         var toRead = new List<string>();
         var pending = new Queue<string>();
         pending.Enqueue(root);
@@ -153,9 +155,8 @@ public static class FolderSearch
                     catch { }
                 }
                 if (names >= NameCap || !entry.Name.Contains(query, StringComparison.OrdinalIgnoreCase)) continue;
-                if (!isFolder) namedFiles.Add(entry.FullName);
                 report(new SearchResultItem { Kind = SearchMatchKind.Name, IsFolder = isFolder, FullPath = entry.FullName,
-                    RelativePath = Relative(root, entry.FullName), GroupHeading = names == 0 ? Loc.Get("SearchNames") : "" });
+                    RelativePath = Relative(root, entry.FullName) });
                 names++;
             }
         }
@@ -182,14 +183,9 @@ public static class FolderSearch
             catch (OperationCanceledException) { throw; }
             catch { continue; }
             if (snippet == null) continue;
-            if (namedFiles.Contains(path))
-                report(new SearchResultItem { Kind = SearchMatchKind.AlsoContent, FullPath = path, Snippet = snippet });
-            else
-            {
-                report(new SearchResultItem { Kind = SearchMatchKind.Content, FullPath = path, RelativePath = Relative(root, path),
-                    Snippet = snippet, GroupHeading = contents == 0 ? Loc.Get("SearchContents") : "" });
-                contents++;
-            }
+            report(new SearchResultItem { Kind = SearchMatchKind.Content, FullPath = path, RelativePath = Relative(root, path),
+                Snippet = snippet });
+            contents++;
         }
         return (filesRead, names + contents);
     }

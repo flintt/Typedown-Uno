@@ -48,7 +48,7 @@ public static class Loc
         ["Files"] = "Files", ["Outline"] = "Outline", ["Search"] = "Search", ["SearchPlaceholder"] = "Search in folder…", ["NoFolder"] = "No folder open",
         ["FindResultsTitle"] = "Search in document", ["FindResultsCapped"] = "{0} matches (first {1} shown)",
         ["NoHeadings"] = "No headings", ["NoResults"] = "No results", ["Results"] = "{1} matches in {0} files",
-        ["SearchNames"] = "Names", ["SearchContents"] = "Contents", ["SearchHits"] = "{0} results", ["SearchAlsoInContent"] = "Also in content",
+        ["SearchNames"] = "Filename matches", ["SearchContents"] = "Content matches", ["SearchHits"] = "{0} results", ["SearchAlsoInContent"] = "Also in content",
         ["Untitled"] = "Untitled", ["Words"] = "{0} words", ["SaveChanges"] = "Save changes?", ["HasUnsaved"] = "{0} has unsaved changes.",
         ["DontSave"] = "Don't save", ["Cancel"] = "Cancel", ["OK"] = "OK", ["FileChanged"] = "File changed on disk", ["ReloadPrompt"] = "{0} was modified outside Typedown. Reload it and lose your changes?",
         ["Reload"] = "Reload", ["KeepMine"] = "Keep mine", ["CannotOpen"] = "Cannot open file", ["CannotSave"] = "Cannot save file", ["Error"] = "Error", ["EditorNotResponding"] = "The editor did not respond. The operation was stopped so recent text is not lost.",

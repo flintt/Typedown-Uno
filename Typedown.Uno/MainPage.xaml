@@ -17,11 +17,14 @@
       <TextBlock Text="{x:Bind Content}" Margin="{x:Bind Indent}" TextTrimming="CharacterEllipsis" Padding="0,4"/>
     </DataTemplate>
     <DataTemplate x:Key="SearchResultTemplate" x:DataType="vm:SearchResultItem">
-      <StackPanel Padding="0,4" Spacing="2">
-        <TextBlock Text="{x:Bind GroupHeading}" Visibility="{x:Bind GroupHeaderVisibility}" FontWeight="SemiBold" Margin="0,8,0,4"/>
-        <TextBlock Text="{x:Bind RelativePath}" FontSize="12" Opacity="0.7" TextTrimming="CharacterEllipsis"/>
-        <TextBlock Text="{x:Bind DisplaySnippet, Mode=OneWay}" TextTrimming="CharacterEllipsis"/>
-      </StackPanel>
+      <Grid>
+        <TextBlock Text="{x:Bind GroupHeading, Mode=OneWay}" Visibility="{x:Bind GroupHeaderVisibility}"
+                   FontWeight="SemiBold" Margin="4,8,0,6"/>
+        <StackPanel Visibility="{x:Bind ResultVisibility}" Padding="0,4" Spacing="2">
+          <TextBlock Text="{x:Bind RelativePath}" FontSize="12" Opacity="0.7" TextTrimming="CharacterEllipsis"/>
+          <TextBlock Text="{x:Bind DisplaySnippet}" TextTrimming="CharacterEllipsis"/>
+        </StackPanel>
+      </Grid>
     </DataTemplate>
     <DataTemplate x:Key="DocumentFindResultTemplate" x:DataType="local:DocumentFindResult">
       <StackPanel Padding="4,5" Spacing="2">
