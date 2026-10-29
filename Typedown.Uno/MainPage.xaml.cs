@@ -90,6 +90,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private string? startupFile;
     private string? workFolder;
     private FolderItem? folderRoot;
+    private readonly ObservableCollection<FavoriteItem> favoriteItems = [];
     private CancellationTokenSource? pendingSingleClick;
     private CancellationTokenSource? searchCts;
     private ObservableCollection<SearchResultItem>? searchVisibleResults;
@@ -121,6 +122,8 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     {
         Loc.Apply(settings.Language);
         this.InitializeComponent();
+        FavoritesList.ItemsSource = favoriteItems;
+        RefreshFavoritesPane();
         // The menu items show their shortcuts; the page's accelerators need no tooltips of their own (Ctrl+, read
         // "Ctrl+None" in one).
         KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
@@ -191,7 +194,11 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         {
             UpdateTitle();
             // Switching tabs restores a document rather than opening one, so the tree hears about it here.
-            if (e.PropertyName == nameof(DocumentViewModel.FilePath)) FollowDocumentFolder(document.FilePath);
+            if (e.PropertyName == nameof(DocumentViewModel.FilePath))
+            {
+                FollowDocumentFolder(document.FilePath);
+                UpdateFolderRevealButton();
+            }
             if (e.PropertyName is nameof(DocumentViewModel.FilePath) or nameof(DocumentViewModel.Saved)) _ = RefreshHomeAsync();
         });
         document.RunOnUi += work => DispatcherQueue.TryEnqueue(async () => await work());
@@ -1625,6 +1632,55 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         favoritesMenu.Items.Add(Item("ClearFavorites", () => settings.FavoritePaths = new()));
     }
 
+    private void RefreshFavoritesPane()
+    {
+        favoriteItems.Clear();
+        foreach (var path in settings.FavoritePaths) favoriteItems.Add(new FavoriteItem(path));
+        UpdateFavoritesPane();
+    }
+
+    private void UpdateFavoritesPane()
+    {
+        FavoritesGroup.Visibility = favoriteItems.Count > 0 && settings.SidePanePage == 0 ? Visibility.Visible : Visibility.Collapsed;
+        FavoritesList.Visibility = settings.FavoritesExpanded ? Visibility.Visible : Visibility.Collapsed;
+        FavoritesChevron.Glyph = settings.FavoritesExpanded ? "\uE70D" : "\uE76C";
+    }
+
+    private void OnFavoritesHeaderClick(object sender, RoutedEventArgs e) => settings.FavoritesExpanded = !settings.FavoritesExpanded;
+
+    private async void OnFavoriteClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is not FavoriteItem item || !item.Exists) return;
+        if (item.IsFolder)
+        {
+            SetWorkFolder(item.FullPath, explicitChoice: true);
+            ApplySidePane();
+        }
+        else if (tabs != null && !Services.PathIdentity.Same(item.FullPath, document?.FilePath))
+            await tabs.OpenFileAsync(item.FullPath, preview: true);
+    }
+
+    private async void OnFavoriteDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        if ((e.OriginalSource as FrameworkElement)?.DataContext is not FavoriteItem item || item.IsFolder || !item.Exists || tabs == null) return;
+        e.Handled = true;
+        await tabs.OpenFileAsync(item.FullPath, preview: false);
+    }
+
+    private void OnFavoriteRightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if ((e.OriginalSource as FrameworkElement)?.DataContext is not FavoriteItem item) return;
+        var menu = new MenuFlyout();
+        var remove = new MenuFlyoutItem { Text = Loc.Get("RemoveFavorite") };
+        remove.Click += (_, _) => settings.ToggleFavorite(item.FullPath);
+        menu.Items.Add(remove);
+        var reveal = new MenuFlyoutItem { Text = Loc.Get("RevealInFileManager") };
+        reveal.Click += (_, _) => OpenPath(item.IsFolder ? item.FullPath : Path.GetDirectoryName(item.FullPath));
+        menu.Items.Add(reveal);
+        menu.ShowAt((FrameworkElement)sender, e.GetPosition((UIElement)sender));
+        e.Handled = true;
+    }
+
     /// <summary>
     /// Alt+1..9 for the tabs. They are not bindings the user can change, so they are added straight to the
     /// window rather than hung off a menu entry; the editor forwards the same keys when it has the focus.
@@ -1729,14 +1785,66 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         folderRoot.EnsureChildren();
         FileTree.ItemsSource = folderRoot.Children;
         SidePaneTitle.Text = Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar)) is { Length: > 0 } name ? name : folder;
+        ToolTipService.SetToolTip(FolderRootButton, folder);
+        FolderRootButton.IsEnabled = true;
         FolderUpButton.IsEnabled = Directory.GetParent(folder) != null;
         SidePaneStatus.Text = folderRoot.Children.Count == 0 ? Loc.Get("NoResults") : "";
+        UpdateFolderRevealButton();
     }
 
     private void OnFolderUpClick(object sender, RoutedEventArgs e)
     {
         if (workFolder != null && Directory.GetParent(workFolder) is { } parent)
             SetWorkFolder(parent.FullName, explicitChoice: true);
+    }
+
+    private void OnFolderRootClick(object sender, RoutedEventArgs e)
+    {
+        if (workFolder == null) return;
+        var menu = new MenuFlyout();
+        menu.Items.Add(new MenuFlyoutItem { Text = workFolder, IsEnabled = false });
+        var ancestors = new MenuFlyoutSubItem { Text = Loc.Get("ParentFolder") };
+        for (var parent = Directory.GetParent(workFolder); parent != null; parent = parent.Parent)
+        {
+            var path = parent.FullName;
+            ancestors.Items.Add(new MenuFlyoutItem { Text = path }.OnClick(() => SetWorkFolder(path, explicitChoice: true)));
+        }
+        if (ancestors.Items.Count > 0) menu.Items.Add(ancestors);
+
+        void AddFolderGroup(string title, IEnumerable<string> paths)
+        {
+            var group = new MenuFlyoutSubItem { Text = Loc.Get(title) };
+            foreach (var path in paths.Where(Directory.Exists).Distinct(Services.PathIdentity.Comparer).Take(20))
+            {
+                var p = path;
+                group.Items.Add(new MenuFlyoutItem { Text = p }.OnClick(() => SetWorkFolder(p, explicitChoice: true)));
+            }
+            if (group.Items.Count > 0) menu.Items.Add(group);
+        }
+        AddFolderGroup("Favorites", settings.FavoritePaths);
+        AddFolderGroup("RecentFolders", settings.RecentFolders);
+        menu.Items.Add(new MenuFlyoutSeparator());
+        menu.Items.Add(new MenuFlyoutItem { Text = Loc.Get("OpenFolder") }.OnClick(async () => await OpenFolderDialogAsync()));
+        menu.ShowAt((FrameworkElement)sender);
+    }
+
+    private void UpdateFolderRevealButton()
+    {
+        var file = document?.FilePath;
+        var folder = workFolder;
+        var outside = false;
+        if (!string.IsNullOrEmpty(file) && !string.IsNullOrEmpty(folder))
+        {
+            var root = Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            outside = !Services.PathIdentity.Canonical(file).StartsWith(root, Services.PathIdentity.Comparison);
+        }
+        FolderRevealButton.Visibility = outside ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void OnRevealCurrentFileClick(object sender, RoutedEventArgs e)
+    {
+        if (document?.FilePath is { } file && Path.GetDirectoryName(file) is { } folder && Directory.Exists(folder))
+            SetWorkFolder(folder, explicitChoice: true);
     }
 
     private void OnFileOpened(string path)
@@ -2279,6 +2387,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         FileTree.Visibility = page == 0 ? Visibility.Visible : Visibility.Collapsed;
         OutlineList.Visibility = page == 1 ? Visibility.Visible : Visibility.Collapsed;
         FolderHeader.Visibility = page == 0 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateFavoritesPane();
         OpenFolderButton.Visibility = page == 0 ? Visibility.Visible : Visibility.Collapsed;
         if (page == 0 && workFolder == null) SidePaneStatus.Text = Loc.Get("NoFolder");
     }
@@ -2546,7 +2655,8 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                 case nameof(AppSettings.WordCountMethod): lastTocJson = null; break;
                 case nameof(AppSettings.RecentFiles): FillRecent(); if (homeVisible) _ = RefreshHomeAsync(); break;
                 case nameof(AppSettings.RecentFolders): FillRecentFolders(); if (homeVisible) _ = RefreshHomeAsync(); break;
-                case nameof(AppSettings.FavoritePaths): FillFavorites(); if (homeVisible) _ = RefreshHomeAsync(); break;
+                case nameof(AppSettings.FavoritePaths): FillFavorites(); RefreshFavoritesPane(); if (homeVisible) _ = RefreshHomeAsync(); break;
+                case nameof(AppSettings.FavoritesExpanded): UpdateFavoritesPane(); break;
                 case nameof(AppSettings.Language): Loc.Apply(settings.Language); ApplyStrings(); BuildMenus(); UpdateTitle(); _ = PostContextMenuStrings(); _ = RefreshHomeAsync(); break;
                 case nameof(AppSettings.Shortcuts): BuildMenus(); _ = PostShortcutMap(); break;
             }
@@ -2558,8 +2668,10 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         DocumentFindTitle.Text = Loc.Get("FindResultsTitle");
         FilesNavItem.Content = Loc.Get("Files");
         OutlineNavItem.Content = Loc.Get("Outline");
+        FavoritesHeaderText.Text = Loc.Get("Favorites");
         ToolTipService.SetToolTip(SearchButton, Loc.Get("SearchInFolder"));
         ToolTipService.SetToolTip(FolderUpButton, Loc.Get("ParentFolder"));
+        ToolTipService.SetToolTip(FolderRevealButton, Loc.Get("RevealCurrentFile"));
         SearchBox.PlaceholderText = Loc.Get("SearchPlaceholder");
         OpenFolderButton.Content = Loc.Get("OpenFolder");
         ApplyReadOnlyBadge();

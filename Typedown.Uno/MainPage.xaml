@@ -13,6 +13,16 @@
         </StackPanel>
       </TreeViewItem>
     </DataTemplate>
+    <DataTemplate x:Key="FavoriteItemTemplate" x:DataType="vm:FavoriteItem">
+      <Grid Height="30" ColumnSpacing="8" Opacity="{x:Bind Opacity}" ToolTipService.ToolTip="{x:Bind FullPath}">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <FontIcon FontSize="14" Glyph="{x:Bind Glyph}" VerticalAlignment="Center"/>
+        <TextBlock Grid.Column="1" Text="{x:Bind Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+      </Grid>
+    </DataTemplate>
     <DataTemplate x:Key="OutlineItemTemplate" x:DataType="vm:OutlineItem">
       <TextBlock Text="{x:Bind Content}" Margin="{x:Bind Indent}" TextTrimming="CharacterEllipsis" Padding="0,4"/>
     </DataTemplate>
@@ -73,14 +83,43 @@
               <RowDefinition Height="*"/>
               <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
-            <Grid x:Name="FolderHeader" Grid.Row="0" Padding="12,2,8,2" ColumnSpacing="4">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-              </Grid.ColumnDefinitions>
-              <Button x:Name="FolderUpButton" Width="28" Height="28" Content="↑" FontSize="17" Click="OnFolderUpClick" Background="Transparent" BorderThickness="0" IsEnabled="False"/>
-              <TextBlock x:Name="SidePaneTitle" Grid.Column="1" VerticalAlignment="Center" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-            </Grid>
+            <StackPanel Grid.Row="0">
+              <Grid x:Name="FolderHeader" Padding="12,2,8,2" ColumnSpacing="4">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Button x:Name="FolderUpButton" Width="28" Height="28" Content="↑" FontSize="17" Click="OnFolderUpClick" Background="Transparent" BorderThickness="0" IsEnabled="False"/>
+                <Button x:Name="FolderRootButton" Grid.Column="1" Height="28" Click="OnFolderRootClick" Background="Transparent"
+                        BorderThickness="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="6,2">
+                  <Grid ColumnSpacing="6">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="SidePaneTitle" VerticalAlignment="Center" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                    <FontIcon Grid.Column="1" FontSize="10" Glyph="&#xE70D;" VerticalAlignment="Center"/>
+                  </Grid>
+                </Button>
+                <Button x:Name="FolderRevealButton" Grid.Column="2" Width="28" Height="28" Click="OnRevealCurrentFileClick"
+                        Background="Transparent" BorderThickness="0" Visibility="Collapsed">
+                  <FontIcon FontSize="12" Glyph="&#xE8B7;"/>
+                </Button>
+              </Grid>
+              <StackPanel x:Name="FavoritesGroup" Margin="4,0,4,4" Visibility="Collapsed">
+                <Button x:Name="FavoritesHeader" Click="OnFavoritesHeaderClick" Background="Transparent" BorderThickness="0"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="6,4">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon x:Name="FavoritesChevron" FontSize="10" Glyph="&#xE70D;"/>
+                    <TextBlock x:Name="FavoritesHeaderText" FontWeight="SemiBold"/>
+                  </StackPanel>
+                </Button>
+                <ListView x:Name="FavoritesList" MaxHeight="220" Padding="0" ItemTemplate="{StaticResource FavoriteItemTemplate}"
+                          SelectionMode="None" IsItemClickEnabled="True" ItemClick="OnFavoriteClick"
+                          DoubleTapped="OnFavoriteDoubleTapped" RightTapped="OnFavoriteRightTapped"/>
+              </StackPanel>
+            </StackPanel>
             <Grid Grid.Row="1">
               <TreeView x:Name="FileTree" ItemTemplate="{StaticResource FolderItemTemplate}" SelectionMode="Single" CanDragItems="False" CanReorderItems="False"
                         ItemInvoked="OnFileTreeItemInvoked" DoubleTapped="OnFileTreeDoubleTapped" RightTapped="OnFileTreeRightTapped"/>

@@ -12,6 +12,7 @@
   "AddFavorite": "Add to favorites",
   "RemoveFavorite": "Remove from favorites",
   "ClearFavorites": "Clear favorites",
+  "RevealCurrentFile": "Show current file in folder",
   "NoRecent": "(none)",
   "ClearRecent": "Clear list",
   "Save": "Save",

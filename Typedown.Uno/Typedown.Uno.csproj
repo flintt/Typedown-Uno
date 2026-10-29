@@ -12,13 +12,13 @@
     <!-- Versions -->
     <!-- Uno's app manifest requires three parts; the trial package and About box keep the fourth. -->
     <ApplicationDisplayVersion>1.2.1</ApplicationDisplayVersion>
-    <ApplicationVersion>12</ApplicationVersion>
+    <ApplicationVersion>13</ApplicationVersion>
     <!-- Uno derives Version from ApplicationDisplayVersion. Pin the assembly values for trial builds;
          .NET appends SourceRevisionId to InformationalVersion for the About box and log. -->
-    <Version>1.2.1.1</Version>
-    <AssemblyVersion>1.2.1.1</AssemblyVersion>
-    <FileVersion>1.2.1.1</FileVersion>
-    <InformationalVersion>1.2.1.1</InformationalVersion>
+    <Version>1.2.1.2</Version>
+    <AssemblyVersion>1.2.1.2</AssemblyVersion>
+    <FileVersion>1.2.1.2</FileVersion>
+    <InformationalVersion>1.2.1.2</InformationalVersion>
     <!-- The Uno SDK leaves these off in Debug, which makes the About box report 0.0.0 while developing. -->
     <GenerateAssemblyVersionAttribute>true</GenerateAssemblyVersionAttribute>
     <GenerateAssemblyFileVersionAttribute>true</GenerateAssemblyFileVersionAttribute>

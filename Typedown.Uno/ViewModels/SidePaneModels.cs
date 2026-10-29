@@ -61,6 +61,17 @@ public sealed class FolderItem : INotifyPropertyChanged
     private void OnPropertyChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }
 
+/// <summary>A saved file or folder shown above the file tree, including paths that are currently unavailable.</summary>
+public sealed class FavoriteItem(string path)
+{
+    public string FullPath { get; } = path;
+    public string Name => Path.GetFileName(FullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)) is { Length: > 0 } name ? name : FullPath;
+    public bool IsFolder { get; } = Directory.Exists(path);
+    public bool Exists { get; } = File.Exists(path) || Directory.Exists(path);
+    public string Glyph => IsFolder ? "" : "";
+    public double Opacity => Exists ? 1 : 0.5;
+}
+
 /// <summary>A heading from the editor's StateChange toc: {content, lvl, slug}.</summary>
 public sealed class OutlineItem
 {

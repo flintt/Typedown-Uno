@@ -177,6 +177,23 @@
         var groups = document.createElement('div');
         groups.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:24px;';
         content.appendChild(groups);
+        function homeIcon(folder) {
+            var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('viewBox', '0 0 24 24');
+            svg.setAttribute('width', '17');
+            svg.setAttribute('height', '17');
+            svg.setAttribute('fill', 'none');
+            svg.setAttribute('stroke', 'currentColor');
+            svg.setAttribute('stroke-width', '1.7');
+            svg.setAttribute('stroke-linejoin', 'round');
+            svg.style.cssText = 'flex:none;opacity:.75;';
+            var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', folder
+                ? 'M3 6.5a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'
+                : 'M6 3.5h8l4 4v13H6a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2zm8 0v4h4M8 12h6M8 16h6');
+            svg.appendChild(path);
+            return svg;
+        }
         function section(label, items, action) {
             var group = document.createElement('section');
             var heading = document.createElement('h2');
@@ -196,8 +213,12 @@
                 button.style.cssText = 'display:block;width:100%;padding:9px 10px;margin-bottom:3px;border:0;border-radius:6px;' +
                     'background:transparent;color:var(--editorColor,#222);font:inherit;text-align:left;cursor:pointer;';
                 var name = document.createElement('span');
-                name.textContent = (item.folder ? '\uD83D\uDCC1 ' : '\uD83D\uDCC4 ') + item.name;
-                name.style.cssText = 'display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+                name.style.cssText = 'display:flex;align-items:center;gap:8px;min-width:0;';
+                var label = document.createElement('span');
+                label.textContent = item.name;
+                label.style.cssText = 'display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+                name.appendChild(homeIcon(item.folder));
+                name.appendChild(label);
                 var path = document.createElement('small');
                 path.textContent = item.path;
                 path.style.cssText = 'display:block;opacity:.55;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';

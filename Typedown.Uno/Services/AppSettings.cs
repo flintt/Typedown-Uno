@@ -299,6 +299,9 @@ public sealed class AppSettings : INotifyPropertyChanged
     private List<string> favoritePaths = new();
     public List<string> FavoritePaths { get => favoritePaths; set => Set(ref favoritePaths, value); }
 
+    private bool favoritesExpanded = true;
+    public bool FavoritesExpanded { get => favoritesExpanded; set => Set(ref favoritesExpanded, value); }
+
     // ---- HedgeDoc ----
     private string hedgeDocServer = "";
     public string HedgeDocServer { get => hedgeDocServer; set => Set(ref hedgeDocServer, value); }

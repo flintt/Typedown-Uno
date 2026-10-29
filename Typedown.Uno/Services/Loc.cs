@@ -22,7 +22,7 @@ public static class Loc
         ["GoTo"] = "Go to",
         ["File"] = "File", ["New"] = "New", ["NewTab"] = "New tab", ["Open"] = "Open…", ["OpenFolder"] = "Open folder…", ["Recent"] = "Open recent",
         ["RecentFolders"] = "Recent folders", ["ParentFolder"] = "Parent folder", ["OpenAsRoot"] = "Open as sidebar root",
-        ["Favorites"] = "Favorites", ["AddFavorite"] = "Add to favorites", ["RemoveFavorite"] = "Remove from favorites", ["ClearFavorites"] = "Clear favorites",
+        ["Favorites"] = "Favorites", ["AddFavorite"] = "Add to favorites", ["RemoveFavorite"] = "Remove from favorites", ["ClearFavorites"] = "Clear favorites", ["RevealCurrentFile"] = "Show current file in folder",
         ["NoRecent"] = "(none)", ["ClearRecent"] = "Clear list", ["Save"] = "Save", ["SaveAs"] = "Save as…", ["ExportHtml"] = "Export HTML…",
         ["Home"] = "Home", ["HomeOnEmptyTab"] = "Show Home in an empty tab", ["HomeRecentFiles"] = "Recent files",
         ["ShareHedgeDoc"] = "Share to HedgeDoc…", ["Settings"] = "Settings…", ["CloseTab"] = "Close tab", ["Exit"] = "Exit",
