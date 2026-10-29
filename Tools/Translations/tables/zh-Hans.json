@@ -205,6 +205,7 @@
   "LangSystem": "跟随系统",
   "Appearance": "外观",
   "Editor": "编辑器",
+  "MermaidRenderer": "Mermaid 图表渲染器",
   "FontSize": "字号",
   "LineHeight": "行高",
   "EditorWidth": "编辑区宽度",

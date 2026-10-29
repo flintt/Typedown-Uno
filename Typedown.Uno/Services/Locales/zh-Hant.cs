@@ -212,6 +212,7 @@ public static partial class LocaleTables
         ["LangSystem"] = "跟隨系統",
         ["Appearance"] = "外觀",
         ["Editor"] = "編輯器",
+        ["MermaidRenderer"] = "Mermaid 圖表渲染器",
         ["FontSize"] = "字號",
         ["LineHeight"] = "行高",
         ["EditorWidth"] = "編輯區寬度",

@@ -212,6 +212,7 @@ public static partial class LocaleTables
         ["LangSystem"] = "시스템",
         ["Appearance"] = "모양",
         ["Editor"] = "편집기",
+        ["MermaidRenderer"] = "Mermaid 다이어그램 렌더러",
         ["FontSize"] = "글꼴 크기",
         ["LineHeight"] = "줄 높이",
         ["EditorWidth"] = "편집 영역 너비",

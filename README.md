@@ -45,6 +45,7 @@ The same C# + XAML codebase (Uno Platform, Skia desktop) runs on **Linux, Window
 - **Home & sidebar** — optional home on empty tabs for recent files and folders; file and folder favorites in the sidebar; file tree, clickable outline (with current-heading follow), and folder search grouped by filename and content matches.
 - **Find** — `Ctrl+F` in-page find with highlight and previous/next; browse and jump to document matches in the sidebar.
 - **Copy tables & diagrams** — paste tables with their structure and copy diagrams as images.
+- **Mermaid or Pele** — choose the renderer for Mermaid diagram blocks in Settings → Editor. Mermaid remains the default; Pele is optional and may render custom Mermaid themes, math labels, and plugins differently.
 - **Images** — insert a local file, paste a screenshot, or drop an image; each is copied next to the document (`${filename}.assets`) and linked relatively, per your settings.
 - **Export & share** — export HTML, print / export PDF, and one-click **share to HedgeDoc** (anonymous or with login; an unchanged document reuses its previous link instead of creating a new one).
 - **Themes & languages** — follow system / light / dark / black, plus your own CSS themes; UI in English, 简体中文 and more.

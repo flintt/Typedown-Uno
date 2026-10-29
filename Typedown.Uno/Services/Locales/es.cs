@@ -212,6 +212,7 @@ public static partial class LocaleTables
         ["LangSystem"] = "Sistema",
         ["Appearance"] = "Apariencia",
         ["Editor"] = "Editor",
+        ["MermaidRenderer"] = "Renderizador de diagramas Mermaid",
         ["FontSize"] = "Tamaño de letra",
         ["LineHeight"] = "Altura de línea",
         ["EditorWidth"] = "Ancho del editor",

@@ -1,6 +1,6 @@
 # UNO Pele renderer experiment
 
-Branch: `experiment/pele-renderer`, based on `feat/typedown-refresh` at `f9c8273`.
+Included as an optional renderer in the 1.2.2 release candidate. Mermaid remains the default.
 
 This branch lets Uno select Mermaid 11.16.1 or Pele 1.12.0 under Settings > Editor > Mermaid diagram
 renderer. Mermaid remains the default. The shared editor bundle still asks for the `mermaid` global;
@@ -42,8 +42,6 @@ own dimensions. The sizing check also runs in `Tools/rich-copy-check.js` alongsi
   light/dark palette, so Uno custom theme colors are not yet mapped.
 - Math in diagram labels displays its TeX source until a Pele math resolver is supplied. External Mermaid
   plugins are not supported by Pele.
-- The browser test used the current editor bundle and Linux WebKitGTK. Windows and macOS Uno runtime
-  behavior has not been tested in this branch.
+- Windows and macOS runtime validation remains part of the 1.2.2 release gate.
 
-Pele and the bundled reset icon licenses are in `Assets/Editor/pele.LICENSE.txt`. No other repository or
-branch is changed by this experiment.
+Pele and the bundled reset icon licenses are in `Assets/Editor/pele.LICENSE.txt`.

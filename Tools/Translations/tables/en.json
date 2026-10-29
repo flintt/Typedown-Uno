@@ -205,6 +205,7 @@
   "LangSystem": "System",
   "Appearance": "Appearance",
   "Editor": "Editor",
+  "MermaidRenderer": "Mermaid diagram renderer",
   "FontSize": "Font size",
   "LineHeight": "Line height",
   "EditorWidth": "Editor width",
