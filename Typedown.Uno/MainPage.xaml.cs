@@ -104,7 +104,6 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private bool suppressTabSelection;
     private bool documentFindOpen;
     private string? findDocumentId;
-    private string documentFindQuery = "";
     private bool homeVisible;
     private string? homeDismissedDocumentId;
     private int homeDismissedLoadId = -1;
@@ -604,11 +603,12 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             pendingRichCopySource = null;
             return (object?)source;
         });
-        t.Handle("CopyRichBlock", async args =>
+        async Task<object?> WriteBlockCopy(JsonNode? args, bool requireRich)
         {
             var text = args?["text"]?.GetValue<string>() ?? "";
             var html = args?["html"]?.GetValue<string>();
             var base64 = args?["png"]?.GetValue<string>();
+            var mathml = args?["mathml"]?.GetValue<string>();
             byte[]? png = null;
             if (!string.IsNullOrEmpty(base64))
             {
@@ -620,12 +620,12 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                 var height = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(20, 4));
                 if (width is <= 0 or > 8000 || height is <= 0 or > 8000) return (object?)false;
             }
-            if (text.Length == 0 || (string.IsNullOrEmpty(html) && png == null)) return (object?)false;
+            if (text.Length == 0 || (requireRich && string.IsNullOrEmpty(html) && png == null)) return (object?)false;
             try
             {
                 if (Services.GtkClipboard.IsAvailable)
                 {
-                    Services.GtkClipboard.SetRich(text, html, png);
+                    Services.GtkClipboard.SetRich(text, html, png, mathml);
                 }
                 else
                 {
@@ -641,6 +641,17 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                         // Word prefers text over a bitmap alone; an RTF picture makes the pasted block a picture.
                         if (OperatingSystem.IsWindows()) package.SetRtf(PngRtf(png));
                     }
+                    if (Services.MathMlClipboard.ToWordFormat(mathml) is { } wordMathml)
+                    {
+                        var bytes = System.Text.Encoding.UTF8.GetBytes(wordMathml);
+                        foreach (var format in new[] { "MathML", "MathML Presentation" })
+                        {
+                            var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
+                            await stream.WriteAsync(bytes.AsBuffer());
+                            stream.Seek(0);
+                            package.SetData(format, stream);
+                        }
+                    }
                     Clipboard.SetContent(package);
                 }
                 lastCopiedText = text;
@@ -653,7 +664,9 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                 Services.Log.Error("copy rich block", ex);
                 return (object?)false;
             }
-        });
+        }
+        t.Handle("CopyRichBlock", args => WriteBlockCopy(args, requireRich: true));
+        t.Handle("CopyBlock", args => WriteBlockCopy(args, requireRich: false));
         t.Handle("OpenNewWindow", async args =>
         {
             var href = args?.GetValue<string>();
@@ -742,34 +755,35 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                 var openFindResults = args?["open"]?.GetValue<bool>() == true;
                 DispatcherQueue.TryEnqueue(async () => await SetDocumentFindOpenAsync(openFindResults));
                 break;
-            case "DocumentFindResults":
-                if (!documentFindOpen || args?["documentId"]?.GetValue<string>() != document?.DocumentId) break;
-                var findQuery = args?["query"]?.GetValue<string>() ?? "";
-                var totalFindResults = args?["total"]?.GetValue<int>() ?? 0;
-                var findEntries = args?["entries"]?.AsArray()
-                    .Select(item => new DocumentFindResult(item?["index"]?.GetValue<int>() ?? -1, item?["preview"]?.GetValue<string>() ?? ""))
-                    .Where(item => item.Index >= 0).ToArray() ?? [];
+            case "FindResults":
+                if (!documentFindOpen || args is not JsonObject) break;
+                var resultVersion = args["version"]?.GetValue<int>() ?? -1;
+                var resultTotal = args["total"]?.GetValue<int>() ?? 0;
+                var resultEntries = args["entries"]?.AsArray().Select((entry, index) =>
+                {
+                    var line = entry?["text"]?.GetValue<string>() ?? "";
+                    var start = Math.Clamp(entry?["start"]?.GetValue<int>() ?? 0, 0, line.Length);
+                    var end = Math.Clamp(entry?["end"]?.GetValue<int>() ?? start, start, line.Length);
+                    var preview = line[..start] + "【" + line[start..end] + "】" + line[end..];
+                    return new DocumentFindResult(index, resultVersion, preview);
+                }).ToArray() ?? [];
                 DispatcherQueue.TryEnqueue(() =>
                 {
-                    if (!documentFindOpen || document?.DocumentId != args?["documentId"]?.GetValue<string>()) return;
-                    documentFindQuery = findQuery;
-                    DocumentFindResults.ItemsSource = findEntries;
-                    // A fresh ListView scrolls the selected match to its top, hiding earlier hits even when the
-                    // whole list fits. Start at the first result; only stepping or clicking moves the selection.
+                    if (!documentFindOpen) return;
+                    DocumentFindResults.ItemsSource = resultEntries;
                     DocumentFindResults.SelectedItem = null;
-                    DocumentFindStatus.Text = totalFindResults == 0 ? Loc.Get("NoResults")
-                        : totalFindResults > findEntries.Length ? Loc.Format("FindResultsCapped", totalFindResults, findEntries.Length)
-                        : Loc.Format("SearchHits", totalFindResults);
+                    DocumentFindStatus.Text = resultTotal == 0 ? Loc.Get("NoResults")
+                        : resultTotal > resultEntries.Length ? Loc.Format("FindResultsCapped", resultTotal, resultEntries.Length)
+                        : Loc.Format("SearchHits", resultTotal);
                 });
                 break;
-            case "DocumentFindSelection":
-                if (!documentFindOpen || args?["documentId"]?.GetValue<string>() != document?.DocumentId
-                    || args?["query"]?.GetValue<string>() != documentFindQuery) break;
-                var chosenFindIndex = args?["index"]?.GetValue<int>() ?? -1;
+            case "FindState":
+                if (!documentFindOpen) break;
+                var selectedIndex = args?["index"]?.GetValue<int>() ?? -1;
                 DispatcherQueue.TryEnqueue(() =>
                 {
                     if (DocumentFindResults.ItemsSource is not DocumentFindResult[] items) return;
-                    DocumentFindResults.SelectedItem = chosenFindIndex >= 0 && chosenFindIndex < items.Length ? items[chosenFindIndex] : null;
+                    DocumentFindResults.SelectedItem = selectedIndex >= 0 && selectedIndex < items.Length ? items[selectedIndex] : null;
                     if (DocumentFindResults.SelectedItem != null) DocumentFindResults.ScrollIntoView(DocumentFindResults.SelectedItem);
                 });
                 break;
@@ -2363,7 +2377,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private async void OnDocumentFindResultClick(object sender, ItemClickEventArgs e)
     {
         if (e.ClickedItem is not DocumentFindResult result || !documentFindOpen) return;
-        await Post("FindActivate", new { index = result.Index, query = documentFindQuery });
+        await Post("FindActivate", new { index = result.Index, version = result.Version });
         editorHadKeyboard = true;
         Services.WebViewCaret.Focus(EditorView);
     }
