@@ -77,6 +77,8 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private DataPackage? clipboardBatch;
     private DateTime clipboardBatchTime;
     private string? pendingClipboardHtml;
+    private string? pendingRichCopyId;
+    private string? pendingRichCopySource;
     // The text this app last put on the clipboard: pasted back, it is the Markdown it was copied as (PasteClipboardTextAsync).
     private static string? lastCopiedText;
 
@@ -426,6 +428,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private Task PostContextMenuStrings() => Post("ContextMenuStrings", new
     {
         copy = Loc.Get("Copy"),
+        copyContent = Loc.Get("CopyContent"),
         copyAsPlainText = Loc.Get("CopyAsPlainText"),
         cut = Loc.Get("Cut"),
         paste = Loc.Get("Paste"),
@@ -554,15 +557,86 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                 var html = now - clipboardBatchTime < TimeSpan.FromMilliseconds(500) ? pendingClipboardHtml : null;
                 pendingClipboardHtml = null;
                 lastCopiedText = data;
+                if (pendingRichCopyId != null) pendingRichCopySource = data;
                 Services.GtkClipboard.SetTextAndHtml(data, html);
                 return (object?)true;
             }
             if (clipboardBatch == null || now - clipboardBatchTime > TimeSpan.FromMilliseconds(500))
                 clipboardBatch = new DataPackage();
             clipboardBatchTime = now;
-            if (type == "text/html") clipboardBatch.SetHtmlFormat(data); else { clipboardBatch.SetText(data); lastCopiedText = data; }
+            if (type == "text/html") clipboardBatch.SetHtmlFormat(OperatingSystem.IsWindows() && data.Length > 0 ? ToCfHtml(data) : data); else
+            {
+                clipboardBatch.SetText(data);
+                lastCopiedText = data;
+                if (pendingRichCopyId != null) pendingRichCopySource = data;
+            }
             try { Clipboard.SetContent(clipboardBatch); } catch (Exception ex) { Services.Log.Error("set clipboard", ex); }
             return (object?)true;
+        });
+        // The editor's existing copyBlock path produces the exact Markdown source first. The page then asks for it
+        // before adding a table's HTML or a diagram's PNG, so the richer copy still pastes as Markdown here.
+        t.Handle("BeginRichCopy", args =>
+        {
+            pendingRichCopyId = args?["id"]?.GetValue<string>();
+            pendingRichCopySource = null;
+            return (object?)true;
+        });
+        t.Handle("CopiedBlockSource", args =>
+        {
+            var source = args?["id"]?.GetValue<string>() == pendingRichCopyId ? pendingRichCopySource ?? "" : "";
+            pendingRichCopyId = null;
+            pendingRichCopySource = null;
+            return (object?)source;
+        });
+        t.Handle("CopyRichBlock", async args =>
+        {
+            var text = args?["text"]?.GetValue<string>() ?? "";
+            var html = args?["html"]?.GetValue<string>();
+            var base64 = args?["png"]?.GetValue<string>();
+            byte[]? png = null;
+            if (!string.IsNullOrEmpty(base64))
+            {
+                if (base64.Length > 32_000_000) return (object?)false;
+                try { png = Convert.FromBase64String(base64); }
+                catch (FormatException) { return (object?)false; }
+                if (png.Length < 24 || !png.AsSpan(0, 8).SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 })) return (object?)false;
+                var width = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(16, 4));
+                var height = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(20, 4));
+                if (width is <= 0 or > 8000 || height is <= 0 or > 8000) return (object?)false;
+            }
+            if (text.Length == 0 || (string.IsNullOrEmpty(html) && png == null)) return (object?)false;
+            try
+            {
+                if (Services.GtkClipboard.IsAvailable)
+                {
+                    Services.GtkClipboard.SetRich(text, html, png);
+                }
+                else
+                {
+                    var package = new DataPackage();
+                    package.SetText(text);
+                    if (!string.IsNullOrEmpty(html)) package.SetHtmlFormat(OperatingSystem.IsWindows() ? ToCfHtml(html) : html);
+                    if (png != null)
+                    {
+                        var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
+                        await stream.WriteAsync(png.AsBuffer());
+                        stream.Seek(0);
+                        package.SetBitmap(Windows.Storage.Streams.RandomAccessStreamReference.CreateFromStream(stream));
+                        // Word prefers text over a bitmap alone; an RTF picture makes the pasted block a picture.
+                        if (OperatingSystem.IsWindows()) package.SetRtf(PngRtf(png));
+                    }
+                    Clipboard.SetContent(package);
+                }
+                lastCopiedText = text;
+                pendingClipboardHtml = null;
+                clipboardBatch = null;
+                return (object?)true;
+            }
+            catch (Exception ex)
+            {
+                Services.Log.Error("copy rich block", ex);
+                return (object?)false;
+            }
         });
         t.Handle("OpenNewWindow", async args =>
         {
@@ -602,6 +676,31 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         });
         t.Handle("PrintHTML", _ => (object?)false);
         t.Handle("UnhandledException", args => { Console.Error.WriteLine($"[editor] {args}"); return (object?)null; });
+    }
+
+    private static string PngRtf(byte[] png)
+    {
+        var width = png[16] << 24 | png[17] << 16 | png[18] << 8 | png[19];
+        var height = png[20] << 24 | png[21] << 16 | png[22] << 8 | png[23];
+        var rtf = new System.Text.StringBuilder(png.Length * 2 + 160);
+        rtf.Append(@"{\rtf1\ansi{\pict\pngblip\picw").Append(width).Append(@"\pich").Append(height)
+           .Append(@"\picwgoal").Append(width * 15 / 2).Append(@"\pichgoal").Append(height * 15 / 2).Append(' ');
+        rtf.Append(Convert.ToHexString(png)).Append("}}");
+        return rtf.ToString();
+    }
+
+    // Uno's HtmlFormatHelper is not implemented. Windows clipboard HTML needs byte offsets into this UTF-8 payload.
+    private static string ToCfHtml(string fragment)
+    {
+        const string before = "<html><body><!--StartFragment-->";
+        const string after = "<!--EndFragment--></body></html>";
+        const string template = "Version:0.9\r\nStartHTML:{0:D10}\r\nEndHTML:{1:D10}\r\nStartFragment:{2:D10}\r\nEndFragment:{3:D10}\r\n";
+        var headerLength = System.Text.Encoding.UTF8.GetByteCount(string.Format(System.Globalization.CultureInfo.InvariantCulture, template, 0, 0, 0, 0));
+        var startFragment = headerLength + System.Text.Encoding.UTF8.GetByteCount(before);
+        var endFragment = startFragment + System.Text.Encoding.UTF8.GetByteCount(fragment);
+        var endHtml = endFragment + System.Text.Encoding.UTF8.GetByteCount(after);
+        var header = string.Format(System.Globalization.CultureInfo.InvariantCulture, template, headerLength, endHtml, startFragment, endFragment);
+        return header + before + fragment + after;
     }
 
     private void OnEditorMessage(string name, JsonNode? args)

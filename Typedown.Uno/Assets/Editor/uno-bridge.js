@@ -94,6 +94,25 @@
     }
     function local(name, args) { deliver(JSON.stringify({ name: name, args: args })); }
 
+    var richCopySerial = 0;
+    function invokeHost(name, args) {
+        return new Promise(function (resolve, reject) {
+            var id = 'uno_rich_copy_' + (++richCopySerial);
+            var timer = setTimeout(function () { finish(); reject(new Error(name + ' timed out')); }, 10000);
+            function finish() { clearTimeout(timer); window.chrome.webview.removeEventListener('message', reply); }
+            function reply(event) {
+                var message;
+                try { message = typeof event.data === 'string' ? JSON.parse(event.data) : event.data; } catch (e) { return; }
+                if (!message || message.name !== id) return;
+                finish();
+                if (message.args && message.args.code === 0) resolve(message.args.data);
+                else reject(new Error(message.args && message.args.msg || name + ' failed'));
+            }
+            window.chrome.webview.addEventListener('message', reply);
+            send(JSON.stringify({ type: 'invoke', id: id, name: name, args: args }));
+        });
+    }
+
     // UI the editor expects the host to draw. The editor's reports are sent diffed, so the host reassembles them
     // and hands each one back as "ShowFloat"; the drawing happens here because a host popup cannot cover the
     // native web view on Linux.
@@ -401,7 +420,7 @@
     // In-page context menu. The editor suppresses the native menu (it expects the host to show its own), and on
     // Linux the web view is a separate native window, so a host flyout would be drawn behind it: the menu lives
     // in the page, like the find bar. Labels come from the host ("ContextMenuStrings").
-    var menuStrings = { copy: 'Copy', copyAsPlainText: 'Copy as plain text', cut: 'Cut', paste: 'Paste', selectAll: 'Select all' };
+    var menuStrings = { copy: 'Copy', copyContent: 'Copy content', copyAsPlainText: 'Copy as plain text', cut: 'Cut', paste: 'Paste', selectAll: 'Select all' };
     var contextMenu = null;
 
     function isReadOnly() {
@@ -433,7 +452,125 @@
         local('SelectAll');
     }
 
-    function showContextMenu(x, y) {
+    function tableHtml(figure) {
+        var table = figure.querySelector('table');
+        if (!table) return null;
+        var copy = table.cloneNode(true);
+        copy.querySelectorAll('.ag-hide,.ag-remove,.ag-table-tool,[contenteditable="false"]:not(th):not(td)').forEach(function (node) { node.remove(); });
+        copy.querySelectorAll('th,td').forEach(function (cell) {
+            var align = cell.style.textAlign || cell.getAttribute('align');
+            if (align === 'left' || align === 'center' || align === 'right') cell.setAttribute('align', align);
+        });
+        copy.querySelectorAll('*').forEach(function (node) {
+            Array.from(node.attributes).forEach(function (attr) {
+                if (attr.name === 'href' || attr.name === 'src') {
+                    try { node.setAttribute(attr.name, new URL(attr.value, document.baseURI).href); } catch (e) { }
+                } else if (!['colspan', 'rowspan', 'align', 'alt', 'title'].includes(attr.name)) node.removeAttribute(attr.name);
+            });
+        });
+        copy.removeAttribute('id'); copy.removeAttribute('class');
+        copy.setAttribute('border', '1');
+        copy.setAttribute('cellspacing', '0');
+        copy.setAttribute('cellpadding', '4');
+        copy.setAttribute('style', 'border-collapse:collapse');
+        return copy.outerHTML;
+    }
+
+    async function previewPng(figure) {
+        var preview = figure.querySelector(':scope > .ag-container-preview');
+        if (!preview || preview.classList.contains('ag-plantuml-off') || preview.classList.contains('ag-empty')) return null;
+        var source = preview.querySelector('svg, img');
+        if (!source) return null;
+        var rect = source.getBoundingClientRect();
+        var box = source.tagName.toLowerCase() === 'svg' && source.viewBox && source.viewBox.baseVal;
+        var width = Math.ceil(rect.width || (box && box.width) || source.naturalWidth || 0);
+        var height = Math.ceil(rect.height || (box && box.height) || source.naturalHeight || 0);
+        if (!(width > 0 && height > 0)) return null;
+        var scale = Math.min(2, 8000 / width, 8000 / height, Math.sqrt(16000000 / (width * height)));
+        var canvas = document.createElement('canvas');
+        canvas.width = Math.ceil(width * scale); canvas.height = Math.ceil(height * scale);
+        var context = canvas.getContext('2d');
+        if (!context) return null;
+        context.fillStyle = '#fff'; context.fillRect(0, 0, canvas.width, canvas.height);
+        var image = new Image(), url = null;
+        try {
+            if (source.tagName.toLowerCase() === 'svg') {
+                var clone = source.cloneNode(true);
+                clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+                clone.setAttribute('width', width); clone.setAttribute('height', height);
+                var originals = [source].concat(Array.from(source.querySelectorAll('*')));
+                var clones = [clone].concat(Array.from(clone.querySelectorAll('*')));
+                originals.forEach(function (node, index) {
+                    var css = getComputedStyle(node);
+                    var style = clones[index].style;
+                    ['fill', 'stroke', 'stroke-width', 'color', 'font-family', 'font-size', 'font-weight', 'text-anchor', 'opacity'].forEach(function (key) {
+                        style.setProperty(key, css.getPropertyValue(key));
+                    });
+                });
+                // Chromium treats an SVG image with foreignObject (Mermaid's HTML labels) as a tainted canvas.
+                // SVG text remains readable and can be rasterized into a clipboard PNG.
+                clone.querySelectorAll('foreignObject').forEach(function (foreign) {
+                    var label = foreign.textContent.trim();
+                    var replacement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    var x = parseFloat(foreign.getAttribute('x') || '0');
+                    var y = parseFloat(foreign.getAttribute('y') || '0');
+                    var w = parseFloat(foreign.getAttribute('width') || '0');
+                    var h = parseFloat(foreign.getAttribute('height') || '0');
+                    replacement.setAttribute('x', String(x + w / 2));
+                    replacement.setAttribute('y', String(y + h / 2));
+                    replacement.setAttribute('text-anchor', 'middle');
+                    replacement.setAttribute('dominant-baseline', 'middle');
+                    replacement.setAttribute('font-size', '14');
+                    replacement.setAttribute('fill', '#333');
+                    replacement.textContent = label;
+                    foreign.replaceWith(replacement);
+                });
+                url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(clone)], { type: 'image/svg+xml' }));
+            }
+            await new Promise(function (resolve, reject) {
+                image.onload = resolve; image.onerror = reject;
+                image.src = url || source.currentSrc || source.src;
+            });
+            context.drawImage(image, 0, 0, canvas.width, canvas.height);
+            return canvas.toDataURL('image/png').slice('data:image/png;base64,'.length);
+        } catch (e) {
+            console.warn('copy picture failed', e);
+            return null;
+        } finally { if (url) URL.revokeObjectURL(url); }
+    }
+
+    async function copyRichFigure(figure) {
+        if (!figure || !figure.id) return;
+        // Muya exports the block Markdown; the host replies only after its text/plain clipboard call was handled.
+        var state = window.__typedownMuya && window.__typedownMuya.contentState;
+        var block = state && state.getBlock(figure.id);
+        if (!block) return;
+        var sourceKey = null;
+        function findSource(part) {
+            if (sourceKey) return;
+            if (part.type === 'span' && state.getAnchor(part) === block) { sourceKey = part.key; return; }
+            (part.children || []).forEach(findSource);
+        }
+        findSource(block);
+        if (!sourceKey) return;
+        var copyId = 'block-' + Date.now() + '-' + (++richCopySerial);
+        try { await invokeHost('BeginRichCopy', { id: copyId }); }
+        catch (e) { return; }
+        var selectedCells = state && state.selectedTableCells;
+        var selectedImage = state && state.selectedImage;
+        if (state) { state.selectedTableCells = null; state.selectedImage = null; }
+        try { local('Copy', { type: 'copyBlock', copyInfo: sourceKey }); }
+        finally { if (state) { state.selectedTableCells = selectedCells; state.selectedImage = selectedImage; } }
+        try {
+            var text = await invokeHost('CopiedBlockSource', { id: copyId });
+            if (!text) return;
+            var html = figure.matches('[data-role="TABLE"]') ? tableHtml(figure) : null;
+            var png = html ? null : await previewPng(figure);
+            if (html || png) await invokeHost('CopyRichBlock', { text: text, html: html, png: png });
+        } catch (e) { console.warn('copy block failed', e); }
+    }
+
+    function showContextMenu(x, y, target) {
         if (!contextMenu) {
             contextMenu = document.createElement('div');
             contextMenu.id = 'uno-context-menu';
@@ -449,6 +586,8 @@
         // often enough that the host is the reliable way to reach the clipboard.
         var text = selectedText();
         var hasSelection = !!text;
+        var figure = target && target.closest && target.closest('#ag-editor-id figure[data-role]');
+        if (figure && !figure.matches('[data-role="TABLE"]') && !figure.querySelector(':scope > .ag-container-preview')) figure = null;
         function copyToHost() { send(JSON.stringify({ type: 'message', name: 'ClipboardSetText', args: { text: text } })); }
         // Clicking the menu collapses the selection, and cut/paste act on the editor's own cursor: remember it
         // while the menu opens and put it back before handing the command over.
@@ -473,6 +612,7 @@
         contextMenu.textContent = '';
         // Cut and paste change the document, so reading mode only offers copy and select all.
         var items = [
+            { label: menuStrings.copyContent, enabled: !!figure, hidden: !figure, run: function () { copyRichFigure(figure); } },
             // The editor's own copy puts Markdown and HTML on the clipboard (the host's SetClipboard), which keeps
             // bold, code and links across a copy/paste; plain text is the fallback when there is no editor.
             { label: menuStrings.copy, enabled: hasSelection, run: function () { if (!editorClipboard('Copy')) copyToHost(); } },
@@ -514,7 +654,7 @@
         if (contextMenu && contextMenu.contains(e.target)) { e.preventDefault(); return; }
         e.preventDefault();
         // the editor's own handler runs too and keeps its cursor in step; only the native menu is suppressed
-        showContextMenu(e.clientX, e.clientY);
+        showContextMenu(e.clientX, e.clientY, e.target);
         // capture: the editor stops the event from bubbling out of its container
     }, true);
     window.addEventListener('mousedown', function (e) {
