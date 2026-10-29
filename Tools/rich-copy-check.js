@@ -21,7 +21,7 @@ const preload = `(() => {
   window.__last = {}; window.__rich = []; window.__copiedText = ''; window.__copyId = null; window.__messages = []; window.__invokes = [];
   const deliver = value => listeners.forEach(fn => fn({ data: JSON.stringify(value) }));
   const answers = {
-    GetSettings: { markdown: '# Blocks\\n\\n| Name | Value |\\n| --- | --- |\\n| Alpha | **Bold** |\\n\\n\`\`\`mermaid\\ngraph TD\\nA-->B\\n\`\`\`\\n', sourceCode: false, readOnly: false, fontSize: 16, lineHeight: 1.6,
+    GetSettings: { markdown: '# Blocks\\n\\n| Name | Value |\\n| --- | --- |\\n| Alpha | **Bold** |\\n\\n\`\`\`mermaid\\ngraph TD\\nA-->B\\n\`\`\`\\n\\n\`\`\`mermaid\\neventmodeling\\ntimeframe 01 ui CartUI\\ntimeframe 02 command AddItem\\ntimeframe 03 event ItemAdded\\n\`\`\`\\n\\n\`\`\`mermaid\\njourney\\n    title My working day\\n    section Go to work\\n      Make tea: 5: Me\\n\`\`\`\\n', sourceCode: false, readOnly: false, fontSize: 16, lineHeight: 1.6,
       editorAreaWidth: '900px', tabSize: 4, textDirection: 'auto', preferLooseListItem: true,
       listIndentation: '1', tableAlignColumns: false, basePath: '/tmp', loadId: 1 },
     GetCurrentTheme: { theme: 'Light', accentColor: { r: 0, g: 120, b: 212, a: 1 },
@@ -122,6 +122,22 @@ const preload = `(() => {
     if (!diagram.text.includes('```mermaid') || !diagram.pngPrefix?.startsWith('iVBORw0KGgo') || diagram.html)
       throw new Error('Incorrect diagram formats: ' + JSON.stringify(diagram));
     console.log('PASS diagram copy button, Markdown and PNG');
+    for (const [index, kind] of [[1, 'eventmodeling'], [2, 'journey']]) {
+      await wait(kind + ' preview', `!!document.querySelectorAll('figure[data-role="MERMAID"]')[${index}]?.querySelector('.ag-container-preview svg')`);
+      await wait(kind + ' copy button', `!!document.querySelectorAll('figure[data-role="MERMAID"]')[${index}]?.querySelector('.ag-diagram-copy')`);
+      await run(`document.querySelectorAll('figure[data-role="MERMAID"]')[${index}].querySelector('.ag-diagram-copy').click()`);
+      await wait(kind + ' copied', `window.__rich.length === ${index + 2}`);
+      const copy = await run(`({ text: window.__rich[${index + 1}].text, png: window.__rich[${index + 1}].png?.slice(0, 12) })`);
+      if (!copy.text.includes(kind) || !copy.png?.startsWith('iVBORw0KGgo'))
+        throw new Error(kind + ' copy has no PNG: ' + JSON.stringify(copy));
+      console.log('PASS ' + kind + ' copy has PNG');
+    }
+    await run(`window.__unoDeliver(JSON.stringify({ name: 'RenderXhtml', args: { token: 42, diagramsAsPictures: true } }))`);
+    await wait('rendered XHTML', 'window.__last?.RenderedXhtml?.token === 42');
+    const exported = await run(`({ error: window.__last.RenderedXhtml.error, pictures: (window.__last.RenderedXhtml.xhtml?.match(/<img /g) || []).length, svgs: (window.__last.RenderedXhtml.xhtml?.match(/<svg/g) || []).length })`);
+    if (exported.error || exported.pictures !== 3 || exported.svgs !== 0)
+      throw new Error('Diagram XHTML is missing pictures: ' + JSON.stringify(exported));
+    console.log('PASS three diagram pictures in exported XHTML');
   } finally {
     if (socket) socket.close();
     if (chrome && chrome.exitCode === null) {

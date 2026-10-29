@@ -9,7 +9,7 @@ open-source components. Their own license terms continue to apply; exact depende
 | Uno Platform / WinUI | Apache License 2.0 |
 | MarkText and the Muya editor | MIT License |
 | React and CodeMirror | MIT License |
-| Mermaid | MIT License |
+| Pele 1.12.0 (Mermaid diagram renderer) | MIT License; bundled reset icon under ISC License, both in `Assets/Editor/pele.LICENSE.txt` |
 | DOMPurify | Apache License 2.0 or Mozilla Public License 2.0 |
 | KaTeX | MIT License |
 | PrismJS | MIT License |

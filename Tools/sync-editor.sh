@@ -15,25 +15,26 @@ DEST=$HERE/Typedown.Uno/Assets/Editor
 cp -a "$FROM/." "$DEST/"
 rm -f "$DEST"/static/js/*.map "$DEST"/static/css/*.map
 
-# Whatever the Windows index.html says, the bridge has to be loaded before the editor, and mermaid only when a
-# document draws a diagram (lazy-mermaid.js, part of the Windows bundle since typedown 7ad0dd3; an older bundle loads
-# mermaid.min.js itself, and this page used its own uno-lazy-mermaid.js before that).
+# The experimental branch keeps the Windows editor bundle but replaces its Mermaid global with the local Pele adapter.
+# The adapter itself loads Pele only on the first diagram. Keep it before both the Uno bridge and the editor bundle.
 python3 - "$DEST/index.html" <<'PY'
 import sys
 p = sys.argv[1]
 s = open(p, encoding='utf-8').read()
-lazy = '<script src="./lazy-mermaid.js"></script>'
-for old in ('<script src="./mermaid.min.js"></script>', '<script src="./uno-lazy-mermaid.js"></script>'):
+adapter = '<script src="./pele-mermaid-adapter.js"></script>'
+for old in ('<script src="./lazy-mermaid.js"></script>', '<script src="./mermaid.min.js"></script>', '<script src="./uno-lazy-mermaid.js"></script>'):
     if old in s:
-        s = s.replace(old, lazy, 1)
-        print('  mermaid loads on demand')
+        s = s.replace(old, adapter, 1)
+        print('  Pele adapter loads on demand')
+if adapter not in s:
+    raise SystemExit('index.html does not load a known diagram renderer')
 if 'uno-bridge.js' not in s:
-    if lazy not in s:
-        raise SystemExit('index.html does not look like the editor page; add the bridge tag by hand')
-    s = s.replace(lazy, lazy + '<script src="./uno-bridge.js"></script>', 1)
+    s = s.replace(adapter, adapter + '<script src="./uno-bridge.js"></script>', 1)
     print('  put the uno-bridge tag back')
 open(p, 'w', encoding='utf-8').write(s)
 PY
+
+rm -f "$DEST/lazy-mermaid.js" "$DEST/mermaid.min.js" "$DEST/uno-lazy-mermaid.js"
 
 # Drop bundles the page no longer references.
 keep=$(grep -o 'main\.[a-f0-9]*\.\(js\|css\)' "$DEST/index.html" | sort -u)
