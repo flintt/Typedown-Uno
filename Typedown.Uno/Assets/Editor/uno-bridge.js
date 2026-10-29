@@ -108,10 +108,11 @@
     // In-page find bar. Keyboard focus cannot be moved from the native web view to the host window on Linux/macOS,
     // so the find UI lives in the page and drives the editor's own Search/Find handlers directly.
     var findBar = null, findInput = null, findCount = null, findRow = null, replaceRow = null, replaceInput = null;
+    var findResultsOpen = false, findDocumentId = null, findResultsTimer = null;
     // Labels for the find bar; replaced by the host (see "FindStrings") in the interface language.
     var findStrings = {
         find: 'Find', replaceWith: 'Replace with', replace: 'Replace', replaceAll: 'Replace all',
-        previous: 'Previous (Shift+Enter)', next: 'Next (Enter)', close: 'Close (Esc)',
+        previous: 'Previous (Shift+Enter)', next: 'Next (Enter)', close: 'Close (Esc)', results: 'Results',
     };
     var findOptions = { searchIsCaseSensitive: false, searchIsWholeWord: false, searchIsRegexp: false };
     // "Find next" starts after the caret, so the editor needs to be told where it is; with no caret the search
@@ -123,12 +124,79 @@
     }
     function runSearch() {
         local('Search', { value: findInput.value, opt: searchOptions() });
-        setTimeout(function () {
-            var muya = window.__typedownMuya;
-            var matches = muya && muya.contentState && muya.contentState.searchMatches && muya.contentState.searchMatches.matches;
-            var n = matches ? matches.length : document.querySelectorAll('.ag-selection, .ag-highlight').length;
+        clearTimeout(findResultsTimer);
+        findResultsTimer = setTimeout(function () {
+            var source = sourceEditor();
+            var cs = findState();
+            var matches = cs && cs.searchMatches && cs.searchMatches.matches;
+            var n = source ? sourceMatches(source).length : matches ? matches.length : 0;
             findCount.textContent = findInput.value ? String(n) : '';
+            publishFindResults();
         }, 80);
+    }
+    function sourceEditor() {
+        var wrapper = document.querySelector('.CodeMirror');
+        return wrapper && wrapper.CodeMirror || null;
+    }
+    function sourceMatches(cm) {
+        if (!findInput || !findInput.value) return [];
+        var pattern = findOptions.searchIsRegexp ? findInput.value : findInput.value.replace(/[\[\]\\^$.|?*+()/]/g, '\\$&');
+        if (findOptions.searchIsWholeWord) pattern = '\\b' + pattern + '\\b';
+        var re;
+        try { re = new RegExp(pattern, findOptions.searchIsCaseSensitive ? 'g' : 'gi'); }
+        catch (e) { return []; }
+        var text = cm.getValue(), matches = [], match;
+        while ((match = re.exec(text)) !== null) {
+            if (match[0].length) matches.push({ start: match.index, end: re.lastIndex });
+            else re.lastIndex++;
+        }
+        return matches;
+    }
+    function findState() {
+        if (sourceEditor()) return null;
+        var muya = window.__typedownMuya;
+        return muya && muya.contentState;
+    }
+    function publishFindSelection() {
+        var cs = findState();
+        if (!findResultsOpen) return;
+        var cm = sourceEditor();
+        var index = cs ? cs.searchMatches.index : -1;
+        if (cm) {
+            var at = cm.indexFromPos(cm.getCursor('from'));
+            index = sourceMatches(cm).findIndex(function (m) { return m.start === at; });
+        }
+        send(JSON.stringify({ type: 'message', name: 'DocumentFindSelection', args: {
+            documentId: findDocumentId, query: findInput.value, index: index
+        } }));
+    }
+    function publishFindResults() {
+        if (!findResultsOpen) return;
+        var cm = sourceEditor();
+        var cs = findState();
+        var state = cs && cs.searchMatches;
+        var matches = cm ? sourceMatches(cm) : state && state.value === findInput.value ? state.matches : [];
+        var entries = [];
+        var count = matches ? matches.length : 0;
+        for (var i = 0; i < Math.min(count, 500); i++) {
+            var match = matches[i];
+            var block = cs && cs.getBlock(match.key);
+            var raw = cm ? cm.getValue() : block && typeof block.text === 'string' ? block.text : (match.match || '');
+            var start = cm || block ? match.start : 0;
+            var end = cm || block ? match.end : raw.length;
+            var before = Math.max(0, start - 40), after = Math.min(raw.length, end + 40);
+            var preview = (before ? '…' : '') + raw.slice(before, start) + '[' + raw.slice(start, end) + ']' + raw.slice(end, after) + (after < raw.length ? '…' : '');
+            entries.push({ index: i, preview: preview.replace(/\s+/g, ' ') });
+        }
+        send(JSON.stringify({ type: 'message', name: 'DocumentFindResults', args: {
+            documentId: findDocumentId, query: findInput ? findInput.value : '', total: count,
+            index: state ? state.index : cm ? matches.findIndex(function (m) { return m.start === cm.indexFromPos(cm.getCursor('from')); }) : -1,
+            entries: entries
+        } }));
+    }
+    function stepFind(action) {
+        local('Find', { action: action });
+        setTimeout(publishFindSelection, 0);
     }
     function ensureFindBar() {
         if (findBar) return;
@@ -163,8 +231,11 @@
         replaceInput.style.cssText = findInput.style.cssText;
         findRow.appendChild(findInput);
         findRow.appendChild(findCount);
-        findRow.appendChild(button('\u2191', findStrings.previous, function () { local('Find', { action: 'prev' }); }));
-        findRow.appendChild(button('\u2193', findStrings.next, function () { local('Find', { action: 'next' }); }));
+        findRow.appendChild(button('\u2191', findStrings.previous, function () { stepFind('prev'); }));
+        findRow.appendChild(button('\u2193', findStrings.next, function () { stepFind('next'); }));
+        findRow.appendChild(button('\u2630', findStrings.results, function () {
+            send(JSON.stringify({ type: 'message', name: 'DocumentFindToggle', args: { open: !findResultsOpen } }));
+        }));
         findRow.appendChild(button('\u21c4', findStrings.replace, toggleReplace));
         findRow.appendChild(button('\u2715', findStrings.close, hideFind));
         replaceRow.appendChild(replaceInput);
@@ -180,7 +251,7 @@
         findBar.appendChild(replaceRow);
         findInput.addEventListener('input', runSearch);
         findInput.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter') { e.preventDefault(); local('Find', { action: e.shiftKey ? 'prev' : 'next' }); }
+            if (e.key === 'Enter') { e.preventDefault(); stepFind(e.shiftKey ? 'prev' : 'next'); }
             else if (e.key === 'Escape') { e.preventDefault(); hideFind(); }
             else if (e.key === 'Tab' && !e.shiftKey && replaceRow.style.display !== 'none') { e.preventDefault(); replaceInput.focus(); }
             e.stopPropagation();
@@ -220,7 +291,7 @@
         if (command === 'find') { showFind(); return true; }
         if (command === 'findNext' || command === 'findPrevious') {
             if (!findBar || findBar.style.display === 'none' || !findInput.value) { showFind(); return true; }
-            local('Find', { action: command === 'findNext' ? 'next' : 'prev' });
+            stepFind(command === 'findNext' ? 'next' : 'prev');
             return true;
         }
         return false;
@@ -231,6 +302,7 @@
         findBar.style.display = 'none';
         local('Search', { value: '', opt: searchOptions() });
         local('SearchOpenChange', { open: 0 });
+        if (findResultsOpen) send(JSON.stringify({ type: 'message', name: 'DocumentFindToggle', args: { open: false } }));
         var editor = document.getElementById('ag-editor-id') || document.querySelector('.CodeMirror textarea');
         if (editor) editor.focus();
     }
@@ -596,6 +668,35 @@
                 if (replaceInput) replaceInput.placeholder = findStrings.replaceWith;
                 return;
             }
+            if (msg && msg.name === 'FindDocument') { findDocumentId = msg.args && msg.args.documentId; return; }
+            if (msg && msg.name === 'FindRefresh') { if (findResultsOpen && findInput && findInput.value) runSearch(); return; }
+            if (msg && msg.name === 'FindResultsOpen') {
+                findResultsOpen = !!(msg.args && msg.args.open);
+                if (findResultsOpen) { ensureFindBar(); if (findInput.value) runSearch(); else publishFindResults(); }
+                return;
+            }
+            if (msg && msg.name === 'FindActivate') {
+                var cs = findState(), at = msg.args && msg.args.index;
+                var cm = sourceEditor();
+                if (cm) {
+                    var sourceHits = sourceMatches(cm), hit = sourceHits[at];
+                    if (!hit || msg.args.query !== findInput.value) return;
+                    var from = cm.posFromIndex(hit.start), to = cm.posFromIndex(hit.end);
+                    local('Search', { value: findInput.value, opt: Object.assign(searchOptions(), { selection: { anchor: from, head: from } }) });
+                    cm.setSelection(from, to);
+                    cm.scrollIntoView({ from: from, to: to }, 80);
+                    setTimeout(publishFindSelection, 80);
+                    return;
+                }
+                if (!cs || !Number.isInteger(at) || !cs.searchMatches || cs.searchMatches.value !== findInput.value || msg.args.query !== findInput.value || at < 0 || at >= cs.searchMatches.matches.length) return;
+                cs.searchMatches.index = at;
+                cs.setCursorToHighlight();
+                cs.render(false);
+                var mark = document.querySelector('#ag-editor-id .ag-highlight');
+                if (mark) mark.scrollIntoView({ block: 'center' });
+                publishFindSelection();
+                return;
+            }
             if (msg && msg.name === 'ShowFloat') {
                 var handler = floatHandlers[msg.args && msg.args.kind];
                 if (handler) handler((msg.args && msg.args.args) || {});
@@ -603,6 +704,7 @@
             }
             if (msg && msg.name === 'ShowFind') { if (msg.args && msg.args.opt) findOptions = msg.args.opt; showFind(msg.args && msg.args.value, msg.args && msg.args.replace); return; }
             if (msg && msg.name === 'HideFind') { hideFind(); return; }
+            if (msg && msg.name === 'Find') { deliver(data); setTimeout(publishFindSelection, 0); return; }
         } catch (e) { }
         deliver(data);
     };

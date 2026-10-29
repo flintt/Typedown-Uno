@@ -193,6 +193,8 @@
   "CmdSourceCode": "Source code mode",
   "CmdInsertImage": "Insert image",
   "SearchInFolder": "Search in folder",
+  "FindResultsTitle": "Search in document",
+  "FindResultsCapped": "{0} matches (first {1} shown)",
   "NewWindow": "New window",
   "OpenInNewWindow": "Open in a new window",
   "CmdNewWindow": "New window",

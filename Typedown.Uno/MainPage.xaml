@@ -23,6 +23,12 @@
         <TextBlock Text="{x:Bind DisplaySnippet, Mode=OneWay}" TextTrimming="CharacterEllipsis"/>
       </StackPanel>
     </DataTemplate>
+    <DataTemplate x:Key="DocumentFindResultTemplate" x:DataType="local:DocumentFindResult">
+      <StackPanel Padding="4,5" Spacing="2">
+        <TextBlock Text="{x:Bind Number}" FontSize="11" Opacity="0.6"/>
+        <TextBlock Text="{x:Bind Preview}" TextWrapping="WrapWholeWords" MaxLines="3" FontSize="12"/>
+      </StackPanel>
+    </DataTemplate>
   </Page.Resources>
 
   <Grid x:Name="Root">
@@ -103,6 +109,25 @@
           </Grid>
           <TextBlock x:Name="SearchStatus" Grid.Row="1" Margin="12,8,12,4" FontSize="12" Opacity="0.7"/>
           <ListView x:Name="SearchResults" Grid.Row="2" ItemTemplate="{StaticResource SearchResultTemplate}" IsItemClickEnabled="True" ItemClick="OnSearchResultClick" SelectionMode="None" Padding="4,0"/>
+        </Grid>
+        <Grid x:Name="DocumentFindPanel" Visibility="Collapsed" Background="{ThemeResource LayerFillColorDefaultBrush}">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+          </Grid.RowDefinitions>
+          <Grid Height="49" Padding="12,6,8,6" BorderThickness="0,0,0,1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="DocumentFindTitle" VerticalAlignment="Center" FontWeight="SemiBold"/>
+            <Button Grid.Column="1" Width="32" Height="32" Click="OnDocumentFindCloseClick" Background="Transparent" BorderThickness="0">
+              <FontIcon FontSize="10" Glyph="&#xE8BB;"/>
+            </Button>
+          </Grid>
+          <TextBlock x:Name="DocumentFindStatus" Grid.Row="1" Margin="12,8,12,4" FontSize="12" Opacity="0.7" TextWrapping="Wrap"/>
+          <ListView x:Name="DocumentFindResults" Grid.Row="2" ItemTemplate="{StaticResource DocumentFindResultTemplate}" IsItemClickEnabled="True" ItemClick="OnDocumentFindResultClick" SelectionMode="Single" Padding="4,0"/>
         </Grid>
       </Grid>
 

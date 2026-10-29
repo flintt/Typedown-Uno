@@ -90,6 +90,9 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private CancellationTokenSource? pendingSingleClick;
     private CancellationTokenSource? searchCts;
     private bool suppressTabSelection;
+    private bool documentFindOpen;
+    private string? findDocumentId;
+    private string documentFindQuery = "";
     private bool closing;
 
     // Local automation: this window as the API sees it, and what its title says about connected programs.
@@ -448,6 +451,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         previous = Loc.Get("FindPrevious"),
         next = Loc.Get("FindNext"),
         close = Loc.Get("Close"),
+        results = Loc.Get("FindResultsTitle"),
     });
 
     /// <summary>Puts the clipboard's text through the editor's paste handler, as Ctrl+V would.</summary>
@@ -602,6 +606,42 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             case "FileLoaded":
                 Services.Log.Write($"editor handshake done ({(args?["same"]?.GetValue<bool>() == true ? "unchanged" : "text returned")})");
                 DispatcherQueue.TryEnqueue(UpdateTitle);
+                if (documentFindOpen) DispatcherQueue.TryEnqueue(async () => await Post("FindRefresh", null));
+                break;
+            case "DocumentFindToggle":
+                var openFindResults = args?["open"]?.GetValue<bool>() == true;
+                DispatcherQueue.TryEnqueue(async () => await SetDocumentFindOpenAsync(openFindResults));
+                break;
+            case "DocumentFindResults":
+                if (!documentFindOpen || args?["documentId"]?.GetValue<string>() != document?.DocumentId) break;
+                var findQuery = args?["query"]?.GetValue<string>() ?? "";
+                var totalFindResults = args?["total"]?.GetValue<int>() ?? 0;
+                var findEntries = args?["entries"]?.AsArray()
+                    .Select(item => new DocumentFindResult(item?["index"]?.GetValue<int>() ?? -1, item?["preview"]?.GetValue<string>() ?? ""))
+                    .Where(item => item.Index >= 0).ToArray() ?? [];
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    if (!documentFindOpen || document?.DocumentId != args?["documentId"]?.GetValue<string>()) return;
+                    documentFindQuery = findQuery;
+                    DocumentFindResults.ItemsSource = findEntries;
+                    // A fresh ListView scrolls the selected match to its top, hiding earlier hits even when the
+                    // whole list fits. Start at the first result; only stepping or clicking moves the selection.
+                    DocumentFindResults.SelectedItem = null;
+                    DocumentFindStatus.Text = totalFindResults == 0 ? Loc.Get("NoResults")
+                        : totalFindResults > findEntries.Length ? Loc.Format("FindResultsCapped", totalFindResults, findEntries.Length)
+                        : Loc.Format("SearchHits", totalFindResults);
+                });
+                break;
+            case "DocumentFindSelection":
+                if (!documentFindOpen || args?["documentId"]?.GetValue<string>() != document?.DocumentId
+                    || args?["query"]?.GetValue<string>() != documentFindQuery) break;
+                var chosenFindIndex = args?["index"]?.GetValue<int>() ?? -1;
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    if (DocumentFindResults.ItemsSource is not DocumentFindResult[] items) return;
+                    DocumentFindResults.SelectedItem = chosenFindIndex >= 0 && chosenFindIndex < items.Length ? items[chosenFindIndex] : null;
+                    if (DocumentFindResults.SelectedItem != null) DocumentFindResults.ScrollIntoView(DocumentFindResults.SelectedItem);
+                });
                 break;
             case "LoadDrawn":
                 // Numeric timings only: the report also carries a scroll anchor that can contain document text.
@@ -1206,6 +1246,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         edit.Items.Add(Item("CopyAsHtml", async () => await Post("Copy", new { type = "copyAsHtml", copyInfo = (object?)null })));
         edit.Items.Add(new MenuFlyoutSeparator());
         edit.Items.Add(Item("Find", () => ShowFind(true), ShortcutCommand.Find));
+        edit.Items.Add(Item("FindResultsTitle", async () => { ShowFind(true); await SetDocumentFindOpenAsync(true); }));
         edit.Items.Add(Item("FindNext", async () => await Post("Find", new { action = "next" }), ShortcutCommand.FindNext));
         edit.Items.Add(Item("FindPrevious", async () => await Post("Find", new { action = "prev" }), ShortcutCommand.FindPrevious));
         edit.Items.Add(Item("Replace", () => ShowFind(true, replace: true), ShortcutCommand.Replace));
@@ -1834,6 +1875,13 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private void UpdateTabBar()
     {
         if (tabs == null) return;
+        if (findDocumentId != document?.DocumentId)
+        {
+            findDocumentId = document?.DocumentId;
+            DocumentFindResults.ItemsSource = null;
+            DocumentFindStatus.Text = "";
+            _ = Post("FindDocument", new { documentId = findDocumentId });
+        }
         TabBar.Visibility = tabs.Tabs.Count > 1 || settings.AlwaysShowTabBar ? Visibility.Visible : Visibility.Collapsed;
         suppressTabSelection = true;
         try { TabBar.SelectedItem = tabs.ActiveTab; }
@@ -1886,6 +1934,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     /// <summary>Folder search takes over the pane (and comes back with its close button), as on Windows.</summary>
     private void OnSearchButtonClick(object sender, RoutedEventArgs e)
     {
+        if (documentFindOpen) _ = SetDocumentFindOpenAsync(false);
         settings.SidePaneOpen = true;
         searchOpen = true;
         editorHadKeyboard = false;
@@ -1909,6 +1958,34 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     }
 
     private bool searchOpen;
+
+    private async Task SetDocumentFindOpenAsync(bool open)
+    {
+        documentFindOpen = open;
+        if (open)
+        {
+            searchOpen = false;
+            settings.SidePaneOpen = true;
+            DocumentFindTitle.Text = Loc.Get("FindResultsTitle");
+            DocumentFindStatus.Text = "";
+            DocumentFindResults.ItemsSource = null;
+            findDocumentId = document?.DocumentId;
+            ApplySidePane();
+            await Post("FindDocument", new { documentId = findDocumentId });
+        }
+        else ApplySidePane();
+        await Post("FindResultsOpen", new { open });
+    }
+
+    private async void OnDocumentFindCloseClick(object sender, RoutedEventArgs e) => await SetDocumentFindOpenAsync(false);
+
+    private async void OnDocumentFindResultClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is not DocumentFindResult result || !documentFindOpen) return;
+        await Post("FindActivate", new { index = result.Index, query = documentFindQuery });
+        editorHadKeyboard = true;
+        Services.WebViewCaret.Focus(EditorView);
+    }
 
     private void ApplyStatusBar() => StatusBar.Visibility = settings.StatusBarOpen ? Visibility.Visible : Visibility.Collapsed;
 
@@ -1943,7 +2020,8 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             updatingSideNav = false;
         }
         SearchPanel.Visibility = searchOpen ? Visibility.Visible : Visibility.Collapsed;
-        SideNav.Visibility = searchOpen ? Visibility.Collapsed : Visibility.Visible;
+        DocumentFindPanel.Visibility = documentFindOpen ? Visibility.Visible : Visibility.Collapsed;
+        SideNav.Visibility = searchOpen || documentFindOpen ? Visibility.Collapsed : Visibility.Visible;
         FileTree.Visibility = page == 0 ? Visibility.Visible : Visibility.Collapsed;
         OutlineList.Visibility = page == 1 ? Visibility.Visible : Visibility.Collapsed;
         FolderHeader.Visibility = page == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -2222,6 +2300,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
 
     private void ApplyStrings()
     {
+        DocumentFindTitle.Text = Loc.Get("FindResultsTitle");
         FilesNavItem.Content = Loc.Get("Files");
         OutlineNavItem.Content = Loc.Get("Outline");
         ToolTipService.SetToolTip(SearchButton, Loc.Get("SearchInFolder"));

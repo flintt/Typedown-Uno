@@ -45,6 +45,7 @@ public static class Loc
         ["SidePane"] = "Side pane", ["Theme"] = "Theme", ["ThemeSystem"] = "System", ["ThemeLight"] = "Light", ["ThemeDark"] = "Dark", ["ThemeBlack"] = "Black",
         ["Help"] = "Help", ["About"] = "About",
         ["Files"] = "Files", ["Outline"] = "Outline", ["Search"] = "Search", ["SearchPlaceholder"] = "Search in folder…", ["NoFolder"] = "No folder open",
+        ["FindResultsTitle"] = "Search in document", ["FindResultsCapped"] = "{0} matches (first {1} shown)",
         ["NoHeadings"] = "No headings", ["NoResults"] = "No results", ["Results"] = "{1} matches in {0} files",
         ["SearchNames"] = "Names", ["SearchContents"] = "Contents", ["SearchHits"] = "{0} results", ["SearchAlsoInContent"] = "Also in content",
         ["Untitled"] = "Untitled", ["Words"] = "{0} words", ["SaveChanges"] = "Save changes?", ["HasUnsaved"] = "{0} has unsaved changes.",

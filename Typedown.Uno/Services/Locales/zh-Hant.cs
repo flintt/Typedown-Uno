@@ -196,6 +196,8 @@ public static partial class LocaleTables
         ["CmdSourceCode"] = "原始碼模式",
         ["CmdInsertImage"] = "插入圖片",
         ["SearchInFolder"] = "在資料夾中搜尋",
+        ["FindResultsTitle"] = "在文件中搜尋",
+        ["FindResultsCapped"] = "共 {0} 處符合（顯示前 {1} 處）",
         ["NewWindow"] = "新增視窗",
         ["OpenInNewWindow"] = "在新視窗中開啟",
         ["CmdNewWindow"] = "新增視窗",
