@@ -114,12 +114,20 @@ const preload = `(() => {
       throw new Error('Incorrect table formats: ' + JSON.stringify(table));
     console.log('PASS table Markdown and HTML');
     await wait('diagram preview', '!!document.querySelector("figure .ag-container-preview svg")');
-    await contextCopy('figure .ag-container-preview svg');
+    await run(`document.querySelector('figure .ag-container-preview svg').dispatchEvent(
+      new MouseEvent('mouseover', { bubbles: true, cancelable: true }))`);
+    await wait('diagram copy button', `(() => {
+      const button = document.querySelector('#uno-diagram-copy');
+      return button && button.style.display === 'block' && button.getAttribute('aria-label') === 'Copy content';
+    })()`);
+    await run(`document.querySelector('#uno-diagram-copy').dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true }))`);
     await wait('rich diagram copy', 'window.__rich.length === 2');
+    await wait('diagram copy confirmation', `document.querySelector('#uno-diagram-copy').classList.contains('ag-code-copied')`);
     const diagram = await run('({ text: window.__rich[1].text, html: window.__rich[1].html, pngPrefix: window.__rich[1].png?.slice(0, 24) })');
     if (!diagram.text.includes('```mermaid') || !diagram.pngPrefix?.startsWith('iVBORw0KGgo') || diagram.html)
       throw new Error('Incorrect diagram formats: ' + JSON.stringify(diagram));
-    console.log('PASS diagram Markdown and PNG');
+    console.log('PASS diagram hover button, Markdown and PNG');
   } finally {
     if (socket) socket.close();
     if (chrome && chrome.exitCode === null) {

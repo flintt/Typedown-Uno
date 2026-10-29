@@ -140,6 +140,7 @@
             }
             return;
         }
+        hideDiagramCopyButton();
         var firstOpen = !homeOverlay || homeOverlay.style.display === 'none';
         var hadFocus = homeOverlay && homeOverlay.contains(document.activeElement);
         if (!homeOverlay) {
@@ -540,11 +541,11 @@
     }
 
     async function copyRichFigure(figure) {
-        if (!figure || !figure.id) return;
+        if (!figure || !figure.id) return false;
         // Muya exports the block Markdown; the host replies only after its text/plain clipboard call was handled.
         var state = window.__typedownMuya && window.__typedownMuya.contentState;
         var block = state && state.getBlock(figure.id);
-        if (!block) return;
+        if (!block) return false;
         var sourceKey = null;
         function findSource(part) {
             if (sourceKey) return;
@@ -552,10 +553,10 @@
             (part.children || []).forEach(findSource);
         }
         findSource(block);
-        if (!sourceKey) return;
+        if (!sourceKey) return false;
         var copyId = 'block-' + Date.now() + '-' + (++richCopySerial);
         try { await invokeHost('BeginRichCopy', { id: copyId }); }
-        catch (e) { return; }
+        catch (e) { return false; }
         var selectedCells = state && state.selectedTableCells;
         var selectedImage = state && state.selectedImage;
         if (state) { state.selectedTableCells = null; state.selectedImage = null; }
@@ -563,12 +564,84 @@
         finally { if (state) { state.selectedTableCells = selectedCells; state.selectedImage = selectedImage; } }
         try {
             var text = await invokeHost('CopiedBlockSource', { id: copyId });
-            if (!text) return;
+            if (!text) return false;
             var html = figure.matches('[data-role="TABLE"]') ? tableHtml(figure) : null;
             var png = html ? null : await previewPng(figure);
-            if (html || png) await invokeHost('CopyRichBlock', { text: text, html: html, png: png });
-        } catch (e) { console.warn('copy block failed', e); }
+            return html || png ? !!(await invokeHost('CopyRichBlock', { text: text, html: html, png: png })) : false;
+        } catch (e) { console.warn('copy block failed', e); return false; }
     }
+
+    // The editor's code-copy icon sits in the folded <pre>, underneath a rendered diagram. Draw one button
+    // above the preview without inserting nodes into Muya's virtual DOM; Muya may replace the preview at any time.
+    var diagramCopyButton = null, diagramCopyFigure = null, diagramCopyTimer = null;
+    function hideDiagramCopyButton() {
+        if (diagramCopyButton) diagramCopyButton.style.display = 'none';
+        diagramCopyFigure = null;
+    }
+    function showDiagramCopyButton(preview) {
+        if (preview.classList.contains('ag-empty') || preview.classList.contains('ag-plantuml-off')
+            || !preview.querySelector('svg, img')) { hideDiagramCopyButton(); return; }
+        var figure = preview.closest('figure[data-role]');
+        if (!figure || !/^(MERMAID|PLANTUML|FLOWCHART|SEQUENCE|VEGA-LITE)$/.test(figure.dataset.role)) {
+            hideDiagramCopyButton(); return;
+        }
+        if (!diagramCopyButton) {
+            diagramCopyButton = document.createElement('button');
+            diagramCopyButton.type = 'button';
+            diagramCopyButton.id = 'uno-diagram-copy';
+            diagramCopyButton.style.cssText = 'position:fixed;z-index:100000;display:none;width:28px;height:28px;padding:5px;' +
+                'border:1px solid var(--floatBorderColor,#ccc);border-radius:4px;background:var(--floatBgColor,#fff);' +
+                'color:var(--editorColor,#222);box-shadow:var(--floatShadow,0 1px 3px #0003);' +
+                'cursor:pointer;opacity:.85;transition:opacity .2s ease-in-out;';
+            diagramCopyButton.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"' +
+                ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+                '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>';
+            document.body.appendChild(diagramCopyButton);
+            diagramCopyButton.addEventListener('mousedown', function (e) { e.preventDefault(); e.stopPropagation(); });
+            diagramCopyButton.addEventListener('click', async function (e) {
+                e.preventDefault(); e.stopPropagation();
+                var target = diagramCopyFigure && document.getElementById(diagramCopyFigure.id);
+                if (!target) return;
+                diagramCopyButton.disabled = true;
+                var copied = await copyRichFigure(target);
+                diagramCopyButton.disabled = false;
+                if (!copied || diagramCopyFigure !== target) return;
+                diagramCopyButton.classList.add('ag-code-copied');
+                diagramCopyButton.style.opacity = '1';
+                diagramCopyButton.firstElementChild.style.visibility = 'hidden';
+                diagramCopyButton.style.backgroundImage = 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%2322a06b\' stroke-width=\'3\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpath d=\'M20 6L9 17l-5-5\'/%3E%3C/svg%3E")';
+                diagramCopyButton.style.backgroundRepeat = 'no-repeat';
+                diagramCopyButton.style.backgroundPosition = 'center';
+                diagramCopyButton.style.backgroundSize = '16px';
+                clearTimeout(diagramCopyTimer);
+                diagramCopyTimer = setTimeout(function () {
+                    diagramCopyButton.classList.remove('ag-code-copied');
+                    diagramCopyButton.firstElementChild.style.visibility = '';
+                    diagramCopyButton.style.backgroundImage = '';
+                    diagramCopyButton.style.opacity = '.85';
+                }, 1500);
+            });
+            diagramCopyButton.addEventListener('mouseenter', function () { diagramCopyButton.style.opacity = '1'; });
+            diagramCopyButton.addEventListener('mouseleave', function () { diagramCopyButton.style.opacity = '.85'; });
+        }
+        var rect = preview.getBoundingClientRect();
+        if (rect.width < 36 || rect.bottom <= 0 || rect.top >= innerHeight) { hideDiagramCopyButton(); return; }
+        var imageRect = preview.querySelector('svg, img').getBoundingClientRect();
+        diagramCopyFigure = figure;
+        diagramCopyButton.title = menuStrings.copyContent;
+        diagramCopyButton.setAttribute('aria-label', menuStrings.copyContent);
+        diagramCopyButton.style.left = Math.max(rect.left + 4, Math.min(imageRect.right + 8, rect.right - 32, innerWidth - 32)) + 'px';
+        diagramCopyButton.style.top = Math.max(4, imageRect.top + 4) + 'px';
+        diagramCopyButton.style.display = 'block';
+    }
+    document.addEventListener('mouseover', function (e) {
+        if (diagramCopyButton && diagramCopyButton.contains(e.target)) return;
+        var preview = e.target.closest && e.target.closest('#ag-editor-id figure[data-role] > .ag-container-preview');
+        if (preview) showDiagramCopyButton(preview);
+        else hideDiagramCopyButton();
+    }, true);
+    document.addEventListener('scroll', hideDiagramCopyButton, true);
+    document.addEventListener('mouseleave', hideDiagramCopyButton);
 
     function showContextMenu(x, y, target) {
         if (!contextMenu) {
