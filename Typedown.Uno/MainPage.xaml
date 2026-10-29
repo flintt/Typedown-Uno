@@ -5,6 +5,9 @@
       xmlns:vm="using:Typedown.Uno.ViewModels"
       Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
   <Page.Resources>
+    <MenuFlyout x:Key="TabContextFlyout" Opening="OnTabContextFlyoutOpening">
+      <MenuFlyoutItem x:Name="TabFavoriteMenuItem" Click="OnTabFavoriteClick"/>
+    </MenuFlyout>
     <DataTemplate x:Key="FolderItemTemplate" x:DataType="vm:FolderItem">
       <TreeViewItem ItemsSource="{x:Bind Children}" IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}">
         <StackPanel Orientation="Horizontal" Spacing="6" Height="28">
@@ -13,13 +16,33 @@
         </StackPanel>
       </TreeViewItem>
     </DataTemplate>
+    <DataTemplate x:Key="FavoriteItemTemplate" x:DataType="vm:FavoriteItem">
+      <Grid Height="30" ColumnSpacing="8" Opacity="{x:Bind Opacity}" ToolTipService.ToolTip="{x:Bind FullPath}">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <FontIcon FontSize="14" Glyph="{x:Bind Glyph}" VerticalAlignment="Center"/>
+        <TextBlock Grid.Column="1" Text="{x:Bind Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+      </Grid>
+    </DataTemplate>
     <DataTemplate x:Key="OutlineItemTemplate" x:DataType="vm:OutlineItem">
       <TextBlock Text="{x:Bind Content}" Margin="{x:Bind Indent}" TextTrimming="CharacterEllipsis" Padding="0,4"/>
     </DataTemplate>
     <DataTemplate x:Key="SearchResultTemplate" x:DataType="vm:SearchResultItem">
-      <StackPanel Padding="0,4" Spacing="2">
-        <TextBlock Text="{x:Bind RelativePath}" FontSize="12" Opacity="0.7" TextTrimming="CharacterEllipsis"/>
-        <TextBlock Text="{x:Bind Snippet}" TextTrimming="CharacterEllipsis"/>
+      <Grid>
+        <TextBlock Text="{x:Bind GroupHeading, Mode=OneWay}" Visibility="{x:Bind GroupHeaderVisibility}"
+                   FontWeight="SemiBold" Margin="4,8,0,6"/>
+        <StackPanel Visibility="{x:Bind ResultVisibility}" Padding="0,4" Spacing="2">
+          <TextBlock Text="{x:Bind RelativePath}" FontSize="12" Opacity="0.7" TextTrimming="CharacterEllipsis"/>
+          <TextBlock Text="{x:Bind DisplaySnippet}" TextTrimming="CharacterEllipsis"/>
+        </StackPanel>
+      </Grid>
+    </DataTemplate>
+    <DataTemplate x:Key="DocumentFindResultTemplate" x:DataType="local:DocumentFindResult">
+      <StackPanel Padding="4,5" Spacing="2">
+        <TextBlock Text="{x:Bind Number}" FontSize="11" Opacity="0.6"/>
+        <TextBlock Text="{x:Bind Preview}" TextWrapping="WrapWholeWords" MaxLines="3" FontSize="12"/>
       </StackPanel>
     </DataTemplate>
   </Page.Resources>
@@ -63,7 +86,43 @@
               <RowDefinition Height="*"/>
               <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
-            <TextBlock x:Name="SidePaneTitle" Margin="12,6,12,4" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+            <StackPanel Grid.Row="0">
+              <Grid x:Name="FolderHeader" Padding="12,2,8,2" ColumnSpacing="4">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Button x:Name="FolderUpButton" Width="28" Height="28" Content="↑" FontSize="17" Click="OnFolderUpClick" Background="Transparent" BorderThickness="0" IsEnabled="False"/>
+                <Button x:Name="FolderRootButton" Grid.Column="1" Height="28" Click="OnFolderRootClick" Background="Transparent"
+                        BorderThickness="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="6,2">
+                  <Grid ColumnSpacing="6">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="SidePaneTitle" VerticalAlignment="Center" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                    <FontIcon Grid.Column="1" FontSize="10" Glyph="&#xE70D;" VerticalAlignment="Center"/>
+                  </Grid>
+                </Button>
+                <Button x:Name="FolderRevealButton" Grid.Column="2" Width="28" Height="28" Click="OnRevealCurrentFileClick"
+                        Background="Transparent" BorderThickness="0" Visibility="Collapsed">
+                  <FontIcon FontSize="12" Glyph="&#xE8B7;"/>
+                </Button>
+              </Grid>
+              <StackPanel x:Name="FavoritesGroup" Margin="4,0,4,4" Visibility="Collapsed">
+                <Button x:Name="FavoritesHeader" Click="OnFavoritesHeaderClick" Background="Transparent" BorderThickness="0"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="6,4">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon x:Name="FavoritesChevron" FontSize="10" Glyph="&#xE70D;"/>
+                    <TextBlock x:Name="FavoritesHeaderText" FontWeight="SemiBold"/>
+                  </StackPanel>
+                </Button>
+                <ListView x:Name="FavoritesList" MaxHeight="220" Padding="0" ItemTemplate="{StaticResource FavoriteItemTemplate}"
+                          SelectionMode="None" IsItemClickEnabled="True" ItemClick="OnFavoriteClick"
+                          DoubleTapped="OnFavoriteDoubleTapped" RightTapped="OnFavoriteRightTapped"/>
+              </StackPanel>
+            </StackPanel>
             <Grid Grid.Row="1">
               <TreeView x:Name="FileTree" ItemTemplate="{StaticResource FolderItemTemplate}" SelectionMode="Single" CanDragItems="False" CanReorderItems="False"
                         ItemInvoked="OnFileTreeItemInvoked" DoubleTapped="OnFileTreeDoubleTapped" RightTapped="OnFileTreeRightTapped"/>
@@ -96,6 +155,25 @@
           <TextBlock x:Name="SearchStatus" Grid.Row="1" Margin="12,8,12,4" FontSize="12" Opacity="0.7"/>
           <ListView x:Name="SearchResults" Grid.Row="2" ItemTemplate="{StaticResource SearchResultTemplate}" IsItemClickEnabled="True" ItemClick="OnSearchResultClick" SelectionMode="None" Padding="4,0"/>
         </Grid>
+        <Grid x:Name="DocumentFindPanel" Visibility="Collapsed" Background="{ThemeResource LayerFillColorDefaultBrush}">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+          </Grid.RowDefinitions>
+          <Grid Height="49" Padding="12,6,8,6" BorderThickness="0,0,0,1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="DocumentFindTitle" VerticalAlignment="Center" FontWeight="SemiBold"/>
+            <Button Grid.Column="1" Width="32" Height="32" Click="OnDocumentFindCloseClick" Background="Transparent" BorderThickness="0">
+              <FontIcon FontSize="10" Glyph="&#xE8BB;"/>
+            </Button>
+          </Grid>
+          <TextBlock x:Name="DocumentFindStatus" Grid.Row="1" Margin="12,8,12,4" FontSize="12" Opacity="0.7" TextWrapping="Wrap"/>
+          <ListView x:Name="DocumentFindResults" Grid.Row="2" ItemTemplate="{StaticResource DocumentFindResultTemplate}" IsItemClickEnabled="True" ItemClick="OnDocumentFindResultClick" SelectionMode="Single" Padding="4,0"/>
+        </Grid>
       </Grid>
 
       <!-- Drag handle for the side pane width (WinUI has no GridSplitter). -->
@@ -113,7 +191,8 @@
                  AddTabButtonClick="OnAddTabClick" TabCloseRequested="OnTabCloseRequested" SelectionChanged="OnTabSelectionChanged">
           <TabView.TabItemTemplate>
             <DataTemplate x:DataType="vm:DocumentTab">
-              <TabViewItem Header="{x:Bind DisplayTitle, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ToolTip, Mode=OneWay}">
+              <TabViewItem Header="{x:Bind DisplayTitle, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ToolTip, Mode=OneWay}"
+                           ContextFlyout="{StaticResource TabContextFlyout}" AllowFocusOnInteraction="False">
                 <TabViewItem.IconSource>
                   <FontIconSource Glyph="&#xE8A5;" FontSize="12"/>
                 </TabViewItem.IconSource>

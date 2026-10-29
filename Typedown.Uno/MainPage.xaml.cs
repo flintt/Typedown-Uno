@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices.WindowsRuntime;
+using System.Collections.ObjectModel;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -77,6 +78,8 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private DataPackage? clipboardBatch;
     private DateTime clipboardBatchTime;
     private string? pendingClipboardHtml;
+    private string? pendingRichCopyId;
+    private string? pendingRichCopySource;
     // The text this app last put on the clipboard: pasted back, it is the Markdown it was copied as (PasteClipboardTextAsync).
     private static string? lastCopiedText;
 
@@ -87,9 +90,24 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private string? startupFile;
     private string? workFolder;
     private FolderItem? folderRoot;
+    private DocumentTab? contextMenuTab;
+    private readonly ObservableCollection<FavoriteItem> favoriteItems = [];
     private CancellationTokenSource? pendingSingleClick;
     private CancellationTokenSource? searchCts;
+    private ObservableCollection<SearchResultItem>? searchVisibleResults;
+    private readonly List<SearchResultItem> searchNameResults = [];
+    private readonly List<SearchResultItem> searchContentResults = [];
+    private SearchResultItem? searchNamesGroup;
+    private SearchResultItem? searchContentsGroup;
+    private bool searchNamesExpanded = true;
+    private bool searchContentsExpanded = true;
     private bool suppressTabSelection;
+    private bool documentFindOpen;
+    private string? findDocumentId;
+    private bool homeVisible;
+    private string? homeDismissedDocumentId;
+    private int homeDismissedLoadId = -1;
+    private int homeVersion;
     private bool closing;
 
     // Local automation: this window as the API sees it, and what its title says about connected programs.
@@ -104,6 +122,8 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     {
         Loc.Apply(settings.Language);
         this.InitializeComponent();
+        FavoritesList.ItemsSource = favoriteItems;
+        RefreshFavoritesPane();
         // The menu items show their shortcuts; the page's accelerators need no tooltips of their own (Ctrl+, read
         // "Ctrl+None" in one).
         KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
@@ -174,7 +194,12 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         {
             UpdateTitle();
             // Switching tabs restores a document rather than opening one, so the tree hears about it here.
-            if (e.PropertyName == nameof(DocumentViewModel.FilePath)) FollowDocumentFolder(document.FilePath);
+            if (e.PropertyName == nameof(DocumentViewModel.FilePath))
+            {
+                FollowDocumentFolder(document.FilePath);
+                UpdateFolderRevealButton();
+            }
+            if (e.PropertyName is nameof(DocumentViewModel.FilePath) or nameof(DocumentViewModel.Saved)) _ = RefreshHomeAsync();
         });
         document.RunOnUi += work => DispatcherQueue.TryEnqueue(async () => await work());
         document.FileOpened += path => DispatcherQueue.TryEnqueue(() => OnFileOpened(path));
@@ -418,6 +443,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private Task PostContextMenuStrings() => Post("ContextMenuStrings", new
     {
         copy = Loc.Get("Copy"),
+        copyContent = Loc.Get("CopyContent"),
         copyAsPlainText = Loc.Get("CopyAsPlainText"),
         cut = Loc.Get("Cut"),
         paste = Loc.Get("Paste"),
@@ -448,6 +474,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         previous = Loc.Get("FindPrevious"),
         next = Loc.Get("FindNext"),
         close = Loc.Get("Close"),
+        results = Loc.Get("FindResultsTitle"),
     });
 
     /// <summary>Puts the clipboard's text through the editor's paste handler, as Ctrl+V would.</summary>
@@ -545,16 +572,101 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                 var html = now - clipboardBatchTime < TimeSpan.FromMilliseconds(500) ? pendingClipboardHtml : null;
                 pendingClipboardHtml = null;
                 lastCopiedText = data;
+                if (pendingRichCopyId != null) pendingRichCopySource = data;
                 Services.GtkClipboard.SetTextAndHtml(data, html);
                 return (object?)true;
             }
             if (clipboardBatch == null || now - clipboardBatchTime > TimeSpan.FromMilliseconds(500))
                 clipboardBatch = new DataPackage();
             clipboardBatchTime = now;
-            if (type == "text/html") clipboardBatch.SetHtmlFormat(data); else { clipboardBatch.SetText(data); lastCopiedText = data; }
+            if (type == "text/html") clipboardBatch.SetHtmlFormat(OperatingSystem.IsWindows() && data.Length > 0 ? ToCfHtml(data) : data); else
+            {
+                clipboardBatch.SetText(data);
+                lastCopiedText = data;
+                if (pendingRichCopyId != null) pendingRichCopySource = data;
+            }
             try { Clipboard.SetContent(clipboardBatch); } catch (Exception ex) { Services.Log.Error("set clipboard", ex); }
             return (object?)true;
         });
+        // The editor's existing copyBlock path produces the exact Markdown source first. The page then asks for it
+        // before adding a table's HTML or a diagram's PNG, so the richer copy still pastes as Markdown here.
+        t.Handle("BeginRichCopy", args =>
+        {
+            pendingRichCopyId = args?["id"]?.GetValue<string>();
+            pendingRichCopySource = null;
+            return (object?)true;
+        });
+        t.Handle("CopiedBlockSource", args =>
+        {
+            var source = args?["id"]?.GetValue<string>() == pendingRichCopyId ? pendingRichCopySource ?? "" : "";
+            pendingRichCopyId = null;
+            pendingRichCopySource = null;
+            return (object?)source;
+        });
+        async Task<object?> WriteBlockCopy(JsonNode? args, bool requireRich)
+        {
+            var text = args?["text"]?.GetValue<string>() ?? "";
+            var html = args?["html"]?.GetValue<string>();
+            var base64 = args?["png"]?.GetValue<string>();
+            var mathml = args?["mathml"]?.GetValue<string>();
+            byte[]? png = null;
+            if (!string.IsNullOrEmpty(base64))
+            {
+                if (base64.Length > 32_000_000) return (object?)false;
+                try { png = Convert.FromBase64String(base64); }
+                catch (FormatException) { return (object?)false; }
+                if (png.Length < 24 || !png.AsSpan(0, 8).SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 })) return (object?)false;
+                var width = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(16, 4));
+                var height = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(20, 4));
+                if (width is <= 0 or > 8000 || height is <= 0 or > 8000) return (object?)false;
+            }
+            if (text.Length == 0 || (requireRich && string.IsNullOrEmpty(html) && png == null)) return (object?)false;
+            try
+            {
+                if (Services.GtkClipboard.IsAvailable)
+                {
+                    Services.GtkClipboard.SetRich(text, html, png, mathml);
+                }
+                else
+                {
+                    var package = new DataPackage();
+                    package.SetText(text);
+                    if (!string.IsNullOrEmpty(html)) package.SetHtmlFormat(OperatingSystem.IsWindows() ? ToCfHtml(html) : html);
+                    if (png != null)
+                    {
+                        var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
+                        await stream.WriteAsync(png.AsBuffer());
+                        stream.Seek(0);
+                        package.SetBitmap(Windows.Storage.Streams.RandomAccessStreamReference.CreateFromStream(stream));
+                        // Word prefers text over a bitmap alone; an RTF picture makes the pasted block a picture.
+                        if (OperatingSystem.IsWindows()) package.SetRtf(PngRtf(png));
+                    }
+                    if (Services.MathMlClipboard.ToWordFormat(mathml) is { } wordMathml)
+                    {
+                        var bytes = System.Text.Encoding.UTF8.GetBytes(wordMathml);
+                        foreach (var format in new[] { "MathML", "MathML Presentation" })
+                        {
+                            var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
+                            await stream.WriteAsync(bytes.AsBuffer());
+                            stream.Seek(0);
+                            package.SetData(format, stream);
+                        }
+                    }
+                    Clipboard.SetContent(package);
+                }
+                lastCopiedText = text;
+                pendingClipboardHtml = null;
+                clipboardBatch = null;
+                return (object?)true;
+            }
+            catch (Exception ex)
+            {
+                Services.Log.Error("copy rich block", ex);
+                return (object?)false;
+            }
+        }
+        t.Handle("CopyRichBlock", args => WriteBlockCopy(args, requireRich: true));
+        t.Handle("CopyBlock", args => WriteBlockCopy(args, requireRich: false));
         t.Handle("OpenNewWindow", async args =>
         {
             var href = args?.GetValue<string>();
@@ -595,15 +707,110 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         t.Handle("UnhandledException", args => { Console.Error.WriteLine($"[editor] {args}"); return (object?)null; });
     }
 
+    private static string PngRtf(byte[] png)
+    {
+        var width = png[16] << 24 | png[17] << 16 | png[18] << 8 | png[19];
+        var height = png[20] << 24 | png[21] << 16 | png[22] << 8 | png[23];
+        var rtf = new System.Text.StringBuilder(png.Length * 2 + 160);
+        rtf.Append(@"{\rtf1\ansi{\pict\pngblip\picw").Append(width).Append(@"\pich").Append(height)
+           .Append(@"\picwgoal").Append(width * 15 / 2).Append(@"\pichgoal").Append(height * 15 / 2).Append(' ');
+        rtf.Append(Convert.ToHexString(png)).Append("}}");
+        return rtf.ToString();
+    }
+
+    // Uno's HtmlFormatHelper is not implemented. Windows clipboard HTML needs byte offsets into this UTF-8 payload.
+    private static string ToCfHtml(string fragment)
+    {
+        const string before = "<html><body><!--StartFragment-->";
+        const string after = "<!--EndFragment--></body></html>";
+        const string template = "Version:0.9\r\nStartHTML:{0:D10}\r\nEndHTML:{1:D10}\r\nStartFragment:{2:D10}\r\nEndFragment:{3:D10}\r\n";
+        var headerLength = System.Text.Encoding.UTF8.GetByteCount(string.Format(System.Globalization.CultureInfo.InvariantCulture, template, 0, 0, 0, 0));
+        var startFragment = headerLength + System.Text.Encoding.UTF8.GetByteCount(before);
+        var endFragment = startFragment + System.Text.Encoding.UTF8.GetByteCount(fragment);
+        var endHtml = endFragment + System.Text.Encoding.UTF8.GetByteCount(after);
+        var header = string.Format(System.Globalization.CultureInfo.InvariantCulture, template, headerLength, endHtml, startFragment, endFragment);
+        return header + before + fragment + after;
+    }
+
     private void OnEditorMessage(string name, JsonNode? args)
     {
         switch (name)
         {
             case "FileLoaded":
-                Services.Log.Write($"editor handshake done ({args?["text"]?.GetValue<string>()?.Length ?? 0} chars)");
+                Services.Log.Write($"editor handshake done ({(args?["same"]?.GetValue<bool>() == true ? "unchanged" : "text returned")})");
                 DispatcherQueue.TryEnqueue(UpdateTitle);
+                DispatcherQueue.TryEnqueue(async () =>
+                {
+                    await Post("FindDocument", new { documentId = document?.DocumentId });
+                    await RefreshHomeAsync();
+                    if (documentFindOpen) await Post("FindRefresh", null);
+                });
+                break;
+            case "HomeAction":
+                var homeAction = args?["action"]?.GetValue<string>();
+                var homePath = args?["path"]?.GetValue<string>();
+                DispatcherQueue.TryEnqueue(async () => await HandleHomeActionAsync(homeAction, homePath));
+                break;
+            case "DocumentFindToggle":
+                var openFindResults = args?["open"]?.GetValue<bool>() == true;
+                DispatcherQueue.TryEnqueue(async () => await SetDocumentFindOpenAsync(openFindResults));
+                break;
+            case "FindResults":
+                if (!documentFindOpen || args is not JsonObject) break;
+                var resultVersion = args["version"]?.GetValue<int>() ?? -1;
+                var resultTotal = args["total"]?.GetValue<int>() ?? 0;
+                var resultEntries = args["entries"]?.AsArray().Select((entry, index) =>
+                {
+                    var line = entry?["text"]?.GetValue<string>() ?? "";
+                    var start = Math.Clamp(entry?["start"]?.GetValue<int>() ?? 0, 0, line.Length);
+                    var end = Math.Clamp(entry?["end"]?.GetValue<int>() ?? start, start, line.Length);
+                    var preview = line[..start] + "【" + line[start..end] + "】" + line[end..];
+                    return new DocumentFindResult(index, resultVersion, preview);
+                }).ToArray() ?? [];
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    if (!documentFindOpen) return;
+                    DocumentFindResults.ItemsSource = resultEntries;
+                    DocumentFindResults.SelectedItem = null;
+                    DocumentFindStatus.Text = resultTotal == 0 ? Loc.Get("NoResults")
+                        : resultTotal > resultEntries.Length ? Loc.Format("FindResultsCapped", resultTotal, resultEntries.Length)
+                        : Loc.Format("SearchHits", resultTotal);
+                });
+                break;
+            case "FindState":
+                if (!documentFindOpen) break;
+                var selectedIndex = args?["index"]?.GetValue<int>() ?? -1;
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    if (DocumentFindResults.ItemsSource is not DocumentFindResult[] items) return;
+                    DocumentFindResults.SelectedItem = selectedIndex >= 0 && selectedIndex < items.Length ? items[selectedIndex] : null;
+                    if (DocumentFindResults.SelectedItem != null) DocumentFindResults.ScrollIntoView(DocumentFindResults.SelectedItem);
+                });
+                break;
+            case "LoadDrawn":
+                // Numeric timings only: the report also carries a scroll anchor that can contain document text.
+                Services.Log.Write($"editor first paint: {args?["firstPaintMs"]} ms, {args?["chars"]} chars, progressive={args?["progressive"]}");
+                break;
+            case "LoadDrawnWhole":
+                Services.Log.Write($"editor fully drawn: {args?["ms"]} ms in {args?["slices"]} slices");
+                break;
+            case "HistoryRequested":
+                // The newer editor delegates Ctrl+Z/Y in both modes to the document's single undo history.
+                // Ignore a request queued just before a tab switch instead of undoing the next document.
+                var historyDocumentId = document?.DocumentId;
+                var redo = args?["redo"]?.GetValue<bool>() == true;
+                DispatcherQueue.TryEnqueue(async () =>
+                {
+                    if (document == null || document.DocumentId != historyDocumentId || !document.FileLoaded || settings.ReadOnly) return;
+                    if (redo) await document.RedoAsync();
+                    else await document.UndoAsync();
+                });
                 break;
             case "StateChange":
+                // The editor sends the outline once per load, then omits it on ordinary keystrokes.
+                // A late report from the previous tab must not replace the visible tab's outline or word count.
+                if (args?["loadId"] is JsonValue stateLoad && stateLoad.TryGetValue<int>(out var stateLoadId)
+                    && stateLoadId != document?.LoadId) break;
                 // Fires on every keystroke: only touch the UI for what is actually visible, and never rebuild the
                 // outline for an unchanged table of contents (rebuilding a ListView per keystroke is expensive).
                 var state = args?["state"];
@@ -624,7 +831,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                     }
                 }
                 // Keep the last table of contents so switching to the outline shows it without waiting for an edit.
-                latestToc = state?["toc"];
+                if (args?["tocUnchanged"]?.GetValue<bool>() != true) latestToc = state?["toc"];
                 if (settings.SidePaneOpen && settings.SidePanePage == 1 && !searchOpen)
                 {
                     var tocJson = latestToc?.ToJsonString();
@@ -640,7 +847,8 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                 // The editor reports the heading the reader is at as the page scrolls (both edit and reading
                 // mode). Mark it in the outline and keep that row in view. A slug from a stale load, or one not
                 // in the current table of contents, simply finds no match and is ignored.
-                if (args?["loadId"] == null) break;
+                if (args?["loadId"] is not JsonValue outlineLoad || !outlineLoad.TryGetValue<int>(out var outlineLoadId)
+                    || outlineLoadId != document?.LoadId) break;
                 var curSlug = args?["slug"]?.GetValue<string>();
                 DispatcherQueue.TryEnqueue(() => { currentOutlineSlug = curSlug; MarkOutlineCurrent(); });
                 break;
@@ -992,6 +1200,8 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     // ---- menus ------------------------------------------------------------------------------------------------------
 
     private MenuFlyoutSubItem? recentMenu;
+    private MenuFlyoutSubItem? recentFolderMenu;
+    private MenuFlyoutSubItem? favoritesMenu;
 
     private readonly List<System.ComponentModel.PropertyChangedEventHandler> menuToggleHandlers = new();
 
@@ -1130,13 +1340,19 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         commandActions.Clear();
         MainMenu.Items.Clear();
         var file = new MenuBarItem { Title = Loc.Get("File") };
-        file.Items.Add(Item("New", async () => { if (tabs != null) await tabs.NewTabAsync(); }, ShortcutCommand.NewTab));
+        file.Items.Add(Item("New", async () => await NewTabOrEditAsync(), ShortcutCommand.NewTab));
         file.Items.Add(Item("NewWindow", () => NewWindow(), ShortcutCommand.NewWindow));
         file.Items.Add(Item("Open", async () => await OpenFileDialogAsync(), ShortcutCommand.Open));
         file.Items.Add(Item("OpenFolder", async () => await OpenFolderDialogAsync(), ShortcutCommand.OpenFolder));
         recentMenu = new MenuFlyoutSubItem { Text = Loc.Get("Recent") };
         file.Items.Add(recentMenu);
         FillRecent();
+        recentFolderMenu = new MenuFlyoutSubItem { Text = Loc.Get("RecentFolders") };
+        file.Items.Add(recentFolderMenu);
+        FillRecentFolders();
+        favoritesMenu = new MenuFlyoutSubItem { Text = Loc.Get("Favorites") };
+        file.Items.Add(favoritesMenu);
+        FillFavorites();
         file.Items.Add(new MenuFlyoutSeparator());
         file.Items.Add(Item("Save", async () => { if (document != null) await document.SaveAsync(); }, ShortcutCommand.Save));
         file.Items.Add(Item("SaveAs", async () => { if (document != null) await document.SaveAsAsync(); }, ShortcutCommand.SaveAs));
@@ -1174,6 +1390,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         edit.Items.Add(Item("CopyAsHtml", async () => await Post("Copy", new { type = "copyAsHtml", copyInfo = (object?)null })));
         edit.Items.Add(new MenuFlyoutSeparator());
         edit.Items.Add(Item("Find", () => ShowFind(true), ShortcutCommand.Find));
+        edit.Items.Add(Item("FindResultsTitle", async () => { ShowFind(true); await SetDocumentFindOpenAsync(true); }));
         edit.Items.Add(Item("FindNext", async () => await Post("Find", new { action = "next" }), ShortcutCommand.FindNext));
         edit.Items.Add(Item("FindPrevious", async () => await Post("Find", new { action = "prev" }), ShortcutCommand.FindPrevious));
         edit.Items.Add(Item("Replace", () => ShowFind(true, replace: true), ShortcutCommand.Replace));
@@ -1387,6 +1604,98 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         recentMenu.Items.Add(Item("ClearRecent", () => settings.RecentFiles = new()));
     }
 
+    private void FillRecentFolders()
+    {
+        if (recentFolderMenu == null) return;
+        recentFolderMenu.Items.Clear();
+        if (settings.RecentFolders.Count == 0)
+        {
+            recentFolderMenu.Items.Add(new MenuFlyoutItem { Text = Loc.Get("NoRecent"), IsEnabled = false });
+            return;
+        }
+        foreach (var path in settings.RecentFolders)
+        {
+            var p = path;
+            recentFolderMenu.Items.Add(new MenuFlyoutItem { Text = p, IsEnabled = Directory.Exists(p) }
+                .OnClick(() => { SetWorkFolder(p, explicitChoice: true); settings.SidePaneOpen = true; settings.SidePanePage = 0; ApplySidePane(); }));
+        }
+        recentFolderMenu.Items.Add(new MenuFlyoutSeparator());
+        recentFolderMenu.Items.Add(Item("ClearRecent", () => settings.RecentFolders = new()));
+    }
+
+    private void FillFavorites()
+    {
+        if (favoritesMenu == null) return;
+        favoritesMenu.Items.Clear();
+        if (settings.FavoritePaths.Count == 0)
+        {
+            favoritesMenu.Items.Add(new MenuFlyoutItem { Text = Loc.Get("NoRecent"), IsEnabled = false });
+            return;
+        }
+        foreach (var path in settings.FavoritePaths)
+        {
+            var p = path;
+            var isFolder = Directory.Exists(p);
+            var exists = isFolder || File.Exists(p);
+            favoritesMenu.Items.Add(new MenuFlyoutItem { Text = p, IsEnabled = exists }.OnClick(async () =>
+            {
+                if (isFolder) { SetWorkFolder(p, explicitChoice: true); settings.SidePaneOpen = true; settings.SidePanePage = 0; ApplySidePane(); }
+                else if (tabs != null) await tabs.OpenFileAsync(p);
+            }));
+        }
+        favoritesMenu.Items.Add(new MenuFlyoutSeparator());
+        favoritesMenu.Items.Add(Item("ClearFavorites", () => settings.FavoritePaths = new()));
+    }
+
+    private void RefreshFavoritesPane()
+    {
+        favoriteItems.Clear();
+        foreach (var path in settings.FavoritePaths) favoriteItems.Add(new FavoriteItem(path));
+        UpdateFavoritesPane();
+    }
+
+    private void UpdateFavoritesPane()
+    {
+        FavoritesGroup.Visibility = favoriteItems.Count > 0 && settings.SidePanePage == 0 ? Visibility.Visible : Visibility.Collapsed;
+        FavoritesList.Visibility = settings.FavoritesExpanded ? Visibility.Visible : Visibility.Collapsed;
+        FavoritesChevron.Glyph = settings.FavoritesExpanded ? "\uE70D" : "\uE76C";
+    }
+
+    private void OnFavoritesHeaderClick(object sender, RoutedEventArgs e) => settings.FavoritesExpanded = !settings.FavoritesExpanded;
+
+    private async void OnFavoriteClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is not FavoriteItem item || !item.Exists) return;
+        if (item.IsFolder)
+        {
+            SetWorkFolder(item.FullPath, explicitChoice: true);
+            ApplySidePane();
+        }
+        else if (tabs != null && !Services.PathIdentity.Same(item.FullPath, document?.FilePath))
+            await tabs.OpenFileAsync(item.FullPath, preview: true);
+    }
+
+    private async void OnFavoriteDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        if ((e.OriginalSource as FrameworkElement)?.DataContext is not FavoriteItem item || item.IsFolder || !item.Exists || tabs == null) return;
+        e.Handled = true;
+        await tabs.OpenFileAsync(item.FullPath, preview: false);
+    }
+
+    private void OnFavoriteRightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if ((e.OriginalSource as FrameworkElement)?.DataContext is not FavoriteItem item) return;
+        var menu = new MenuFlyout();
+        var remove = new MenuFlyoutItem { Text = Loc.Get("RemoveFavorite") };
+        remove.Click += (_, _) => settings.ToggleFavorite(item.FullPath);
+        menu.Items.Add(remove);
+        var reveal = new MenuFlyoutItem { Text = Loc.Get("RevealInFileManager") };
+        reveal.Click += (_, _) => OpenPath(item.IsFolder ? item.FullPath : Path.GetDirectoryName(item.FullPath));
+        menu.Items.Add(reveal);
+        menu.ShowAt((FrameworkElement)sender, e.GetPosition((UIElement)sender));
+        e.Handled = true;
+    }
+
     /// <summary>
     /// Alt+1..9 for the tabs. They are not bindings the user can change, so they are added straight to the
     /// window rather than hung off a menu entry; the editor forwards the same keys when it has the focus.
@@ -1428,7 +1737,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             case ("s", true, true): await document.SaveAsAsync(); break;
             case ("o", true, false): await OpenFileDialogAsync(); break;
             case ("o", true, true): await OpenFolderDialogAsync(); break;
-            case ("n", true, false): await tabs.NewTabAsync(); break;
+            case ("n", true, false): await NewTabOrEditAsync(); break;
             case ("w", true, false): await tabs.CloseTabAsync(tabs.ActiveTab); break;
             case ("p", true, false): await PrintAsync(); break;
             case ("f", true, false): ShowFind(true); break;
@@ -1482,14 +1791,75 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
 
     private void SetWorkFolder(string folder, bool explicitChoice = false)
     {
+        folder = Path.GetFullPath(folder);
         workFolder = folder;
         folderIsExplicit = explicitChoice || folderIsExplicit;
         settings.LastFolder = folder;
+        if (explicitChoice) settings.AddRecentFolder(folder);
         folderRoot = new FolderItem(folder, true);
         folderRoot.EnsureChildren();
         FileTree.ItemsSource = folderRoot.Children;
-        SidePaneTitle.Text = Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar));
+        SidePaneTitle.Text = Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar)) is { Length: > 0 } name ? name : folder;
+        ToolTipService.SetToolTip(FolderRootButton, folder);
+        FolderRootButton.IsEnabled = true;
+        FolderUpButton.IsEnabled = Directory.GetParent(folder) != null;
         SidePaneStatus.Text = folderRoot.Children.Count == 0 ? Loc.Get("NoResults") : "";
+        UpdateFolderRevealButton();
+    }
+
+    private void OnFolderUpClick(object sender, RoutedEventArgs e)
+    {
+        if (workFolder != null && Directory.GetParent(workFolder) is { } parent)
+            SetWorkFolder(parent.FullName, explicitChoice: true);
+    }
+
+    private void OnFolderRootClick(object sender, RoutedEventArgs e)
+    {
+        if (workFolder == null) return;
+        var menu = new MenuFlyout();
+        menu.Items.Add(new MenuFlyoutItem { Text = workFolder, IsEnabled = false });
+        var ancestors = new MenuFlyoutSubItem { Text = Loc.Get("ParentFolder") };
+        for (var parent = Directory.GetParent(workFolder); parent != null; parent = parent.Parent)
+        {
+            var path = parent.FullName;
+            ancestors.Items.Add(new MenuFlyoutItem { Text = path }.OnClick(() => SetWorkFolder(path, explicitChoice: true)));
+        }
+        if (ancestors.Items.Count > 0) menu.Items.Add(ancestors);
+
+        void AddFolderGroup(string title, IEnumerable<string> paths)
+        {
+            var group = new MenuFlyoutSubItem { Text = Loc.Get(title) };
+            foreach (var path in paths.Where(Directory.Exists).Distinct(Services.PathIdentity.Comparer).Take(20))
+            {
+                var p = path;
+                group.Items.Add(new MenuFlyoutItem { Text = p }.OnClick(() => SetWorkFolder(p, explicitChoice: true)));
+            }
+            if (group.Items.Count > 0) menu.Items.Add(group);
+        }
+        AddFolderGroup("Favorites", settings.FavoritePaths);
+        AddFolderGroup("RecentFolders", settings.RecentFolders);
+        menu.Items.Add(new MenuFlyoutSeparator());
+        menu.Items.Add(new MenuFlyoutItem { Text = Loc.Get("OpenFolder") }.OnClick(async () => await OpenFolderDialogAsync()));
+        menu.ShowAt((FrameworkElement)sender);
+    }
+
+    private void UpdateFolderRevealButton()
+    {
+        var file = document?.FilePath;
+        var folder = workFolder;
+        var outside = false;
+        if (!string.IsNullOrEmpty(file) && !string.IsNullOrEmpty(folder))
+        {
+            var root = Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            outside = !Services.PathIdentity.Canonical(file).StartsWith(root, Services.PathIdentity.Comparison);
+        }
+        FolderRevealButton.Visibility = outside ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void OnRevealCurrentFileClick(object sender, RoutedEventArgs e)
+    {
+        if (document?.FilePath is { } file && Path.GetDirectoryName(file) is { } folder && Directory.Exists(folder))
+            SetWorkFolder(folder, explicitChoice: true);
     }
 
     private void OnFileOpened(string path)
@@ -1547,6 +1917,9 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             Add("Open", async () => { if (tabs != null) await tabs.OpenFileAsync(target.FullPath); });
             Add("OpenInNewWindow", () => NewWindow(target.FullPath));
         }
+        else if (item != null)
+            Add("OpenAsRoot", () => SetWorkFolder(target.FullPath, explicitChoice: true));
+        Add(settings.IsFavorite(target.FullPath) ? "RemoveFavorite" : "AddFavorite", () => settings.ToggleFavorite(target.FullPath));
         Add("NewFileHere", async () => await CreateInFolderAsync(folder, file: true));
         Add("NewFolderHere", async () => await CreateInFolderAsync(folder, file: false));
         menu.Items.Add(new MenuFlyoutSeparator());
@@ -1621,6 +1994,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             var target = Path.Combine(Path.GetDirectoryName(item.FullPath)!, name);
             if (item.IsFolder) Directory.Move(item.FullPath, target);
             else File.Move(item.FullPath, target);
+            settings.RemapNavigationPaths(item.FullPath, target, item.IsFolder);
             // A renamed open document keeps its tab: point it at the new path.
             if (!item.IsFolder && tabs?.FindByPath(item.FullPath) is { } tab) tab.FilePath = target;
             RefreshTree();
@@ -1638,6 +2012,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         {
             if (item.IsFolder) Directory.Delete(item.FullPath, recursive: true);
             else File.Delete(item.FullPath);
+            settings.RemapNavigationPaths(item.FullPath, null, item.IsFolder);
             RefreshTree();
         }
         catch (Exception ex)
@@ -1690,30 +2065,107 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private void OnSearchTextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs e)
     {
         searchCts?.Cancel();
+        searchNameResults.Clear();
+        searchContentResults.Clear();
+        searchNamesGroup = null;
+        searchContentsGroup = null;
+        searchVisibleResults = null;
         var query = SearchBox.Text.Trim();
         var root = workFolder;
         if (query.Length == 0 || root == null) { SearchResults.ItemsSource = null; SearchStatus.Text = root == null ? Loc.Get("NoFolder") : ""; return; }
         var cts = searchCts = new CancellationTokenSource();
-        var results = new System.Collections.ObjectModel.ObservableCollection<SearchResultItem>();
+        var results = searchVisibleResults = new ObservableCollection<SearchResultItem>();
+        searchNamesGroup = new SearchResultItem { Kind = SearchMatchKind.NameGroup };
+        searchContentsGroup = new SearchResultItem { Kind = SearchMatchKind.ContentGroup };
+        searchNamesGroup.SetGroupStatus(0, searchNamesExpanded);
+        searchContentsGroup.SetGroupStatus(0, searchContentsExpanded);
+        results.Add(searchNamesGroup);
+        results.Add(searchContentsGroup);
         SearchResults.ItemsSource = results;
         SearchStatus.Text = "…";
         _ = Task.Run(async () =>
         {
-            await Task.Delay(300, cts.Token);
             try
             {
-                var (files, hits) = FolderSearch.Run(root, query, item => DispatcherQueue.TryEnqueue(() => { if (!cts.IsCancellationRequested) results.Add(item); }), cts.Token);
-                DispatcherQueue.TryEnqueue(() => { if (!cts.IsCancellationRequested) SearchStatus.Text = hits == 0 ? Loc.Get("NoResults") : Loc.Format("Results", files, hits); });
+                await Task.Delay(300, cts.Token);
+                var (_, hits) = FolderSearch.Run(root, query, item => DispatcherQueue.TryEnqueue(() =>
+                {
+                    if (cts.IsCancellationRequested) return;
+                    AddFolderSearchResult(item);
+                }), cts.Token);
+                DispatcherQueue.TryEnqueue(() => { if (!cts.IsCancellationRequested) SearchStatus.Text = hits == 0 ? Loc.Get("NoResults") : Loc.Format("SearchHits", hits); });
             }
             catch (OperationCanceledException) { }
         }, cts.Token);
     }
 
+    private void AddFolderSearchResult(SearchResultItem item)
+    {
+        if (searchVisibleResults == null || searchNamesGroup == null || searchContentsGroup == null) return;
+        if (item.Kind == SearchMatchKind.Name)
+        {
+            searchNameResults.Add(item);
+            searchNamesGroup.SetGroupStatus(searchNameResults.Count, searchNamesExpanded);
+            if (searchNamesExpanded) searchVisibleResults.Insert(searchVisibleResults.IndexOf(searchContentsGroup), item);
+        }
+        else if (item.Kind == SearchMatchKind.Content)
+        {
+            searchContentResults.Add(item);
+            searchContentsGroup.SetGroupStatus(searchContentResults.Count, searchContentsExpanded);
+            if (searchContentsExpanded) searchVisibleResults.Add(item);
+        }
+    }
+
+    private void ToggleFolderSearchGroup(SearchResultItem group)
+    {
+        if (searchVisibleResults == null || searchNamesGroup == null || searchContentsGroup == null) return;
+        if (ReferenceEquals(group, searchNamesGroup))
+        {
+            searchNamesExpanded = !searchNamesExpanded;
+            group.SetGroupStatus(searchNameResults.Count, searchNamesExpanded);
+            if (searchNamesExpanded)
+            {
+                for (var i = 0; i < searchNameResults.Count; i++) searchVisibleResults.Insert(i + 1, searchNameResults[i]);
+            }
+            else
+            {
+                for (var i = 0; i < searchNameResults.Count; i++) searchVisibleResults.RemoveAt(1);
+            }
+        }
+        else if (ReferenceEquals(group, searchContentsGroup))
+        {
+            searchContentsExpanded = !searchContentsExpanded;
+            group.SetGroupStatus(searchContentResults.Count, searchContentsExpanded);
+            var start = searchVisibleResults.IndexOf(searchContentsGroup) + 1;
+            if (searchContentsExpanded)
+            {
+                for (var i = 0; i < searchContentResults.Count; i++) searchVisibleResults.Insert(start + i, searchContentResults[i]);
+            }
+            else
+            {
+                for (var i = 0; i < searchContentResults.Count; i++) searchVisibleResults.RemoveAt(start);
+            }
+        }
+    }
+
     private async void OnSearchResultClick(object sender, ItemClickEventArgs e)
     {
-        if (e.ClickedItem is not SearchResultItem item || tabs == null) return;
+        if (e.ClickedItem is not SearchResultItem item) return;
+        if (item.IsGroup) { ToggleFolderSearchGroup(item); return; }
+        if (tabs == null) return;
+        if (item.IsFolder)
+        {
+            SetWorkFolder(item.FullPath, explicitChoice: true);
+            SearchBox.Text = "";
+            searchOpen = false;
+            ApplySidePane();
+            return;
+        }
         var query = SearchBox.Text.Trim();
-        await tabs.OpenFileAsync(item.FullPath, preview: true);
+        if (!await tabs.OpenFileAsync(item.FullPath, preview: true)) return;
+        editorHadKeyboard = true;
+        Services.WebViewCaret.Focus(EditorView);
+        if (!item.ContentMatched) return;
         await Task.Delay(400);
         ShowFind(true, query);
     }
@@ -1723,6 +2175,14 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private void UpdateTabBar()
     {
         if (tabs == null) return;
+        _ = RefreshHomeAsync();
+        if (findDocumentId != document?.DocumentId)
+        {
+            findDocumentId = document?.DocumentId;
+            DocumentFindResults.ItemsSource = null;
+            DocumentFindStatus.Text = "";
+            if (document?.EditorReady == true) _ = Post("FindDocument", new { documentId = findDocumentId });
+        }
         TabBar.Visibility = tabs.Tabs.Count > 1 || settings.AlwaysShowTabBar ? Visibility.Visible : Visibility.Collapsed;
         suppressTabSelection = true;
         try { TabBar.SelectedItem = tabs.ActiveTab; }
@@ -1733,6 +2193,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private async void OnTabSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (suppressTabSelection || tabs == null) return;
+        if (tabs.RestoringSession) { UpdateTabBar(); return; }
         if (TabBar.SelectedItem is DocumentTab tab && tab != tabs.ActiveTab) await tabs.SwitchToAsync(tab);
     }
 
@@ -1741,9 +2202,27 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         if (args.Item is DocumentTab tab && tabs != null) await tabs.CloseTabAsync(tab);
     }
 
+    private void OnTabContextFlyoutOpening(object sender, object e)
+    {
+        if (sender is not MenuFlyout flyout) return;
+        contextMenuTab = (flyout.Target as FrameworkElement)?.DataContext as DocumentTab;
+        var path = contextMenuTab?.FilePath;
+        var favorite = path != null && settings.IsFavorite(path);
+        if (flyout.Items.FirstOrDefault() is MenuFlyoutItem item)
+        {
+            item.Text = Loc.Get(favorite ? "RemoveFavorite" : "AddFavorite");
+            item.IsEnabled = path != null;
+        }
+    }
+
+    private void OnTabFavoriteClick(object sender, RoutedEventArgs e)
+    {
+        if (contextMenuTab?.FilePath is { } path) settings.ToggleFavorite(path);
+    }
+
     private async void OnAddTabClick(TabView sender, object args)
     {
-        if (tabs != null) await tabs.NewTabAsync();
+        await NewTabOrEditAsync();
     }
 
     // ---- find (the bar itself lives in the page: uno-bridge.js) ------------------------------------------------
@@ -1758,6 +2237,82 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         searchIsWholeWord = settings.FindWholeWord,
         searchIsRegexp = settings.FindRegex,
     };
+
+    // The Home view is drawn inside the editor page so it covers WebKit's native child window on Linux.
+    // A blank saved document still exists behind it; choosing New only dismisses Home for this load.
+    private async Task RefreshHomeAsync()
+    {
+        if (document == null || transport == null || !document.EditorReady) return;
+        var show = settings.HomeOnEmptyTab && document.FileLoaded && document.IsBlank
+            && (homeDismissedDocumentId != document.DocumentId || homeDismissedLoadId != document.LoadId);
+        var wasVisible = homeVisible;
+        homeVisible = show;
+        var version = ++homeVersion;
+        if (show && !wasVisible)
+        {
+            if (documentFindOpen) await SetDocumentFindOpenAsync(false);
+            await Post("HideFind", null);
+        }
+        object Entry(string path) => new
+        {
+            name = Path.GetFileName(Path.TrimEndingDirectorySeparator(path)) is { Length: > 0 } name ? name : path,
+            path,
+            folder = Directory.Exists(path),
+        };
+        await Post("HomeState", new
+        {
+            show,
+            version,
+            strings = new
+            {
+                title = Loc.Get("Home"), newFile = Loc.Get("New"), openFile = Loc.Get("Open"),
+                openFolder = Loc.Get("OpenFolder"), recentFiles = Loc.Get("HomeRecentFiles"),
+                recentFolders = Loc.Get("RecentFolders"), favorites = Loc.Get("Favorites"), empty = Loc.Get("NoRecent"),
+            },
+            recentFiles = settings.RecentFiles.Where(File.Exists).Take(8).Select(Entry).ToArray(),
+            recentFolders = settings.RecentFolders.Where(Directory.Exists).Take(8).Select(Entry).ToArray(),
+            favorites = settings.FavoritePaths.Where(p => File.Exists(p) || Directory.Exists(p)).Take(8).Select(Entry).ToArray(),
+        });
+    }
+
+    private async Task NewTabOrEditAsync()
+    {
+        if (tabs == null || document == null) return;
+        if (homeVisible && document.IsBlank)
+        {
+            homeDismissedDocumentId = document.DocumentId;
+            homeDismissedLoadId = document.LoadId;
+            await RefreshHomeAsync();
+            await Post("TakeKeyboard", null);
+            editorHadKeyboard = true;
+            Services.WebViewCaret.Focus(EditorView);
+            return;
+        }
+        await tabs.NewTabAsync();
+    }
+
+    private async Task HandleHomeActionAsync(string? action, string? path)
+    {
+        if (!homeVisible || tabs == null) return;
+        if (action == "new") { await NewTabOrEditAsync(); return; }
+        if (action == "openFile") { await OpenFileDialogAsync(); return; }
+        if (action == "openFolder") { await OpenFolderDialogAsync(); return; }
+        if (path == null) return;
+        bool Listed(IEnumerable<string> list) => list.Any(p => string.Equals(p, path, PathIdentity.Comparison));
+        if (action == "recentFile" && Listed(settings.RecentFiles) && File.Exists(path)
+            || action == "favorite" && settings.IsFavorite(path) && File.Exists(path))
+        {
+            await tabs.OpenFileAsync(path);
+        }
+        else if (action == "recentFolder" && Listed(settings.RecentFolders) && Directory.Exists(path)
+            || action == "favorite" && settings.IsFavorite(path) && Directory.Exists(path))
+        {
+            SetWorkFolder(path, explicitChoice: true);
+            settings.SidePaneOpen = true;
+            settings.SidePanePage = 0;
+            ApplySidePane();
+        }
+    }
 
     // ---- side pane, theme, settings -----------------------------------------------------------------------------------
 
@@ -1774,8 +2329,12 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     /// <summary>Folder search takes over the pane (and comes back with its close button), as on Windows.</summary>
     private void OnSearchButtonClick(object sender, RoutedEventArgs e)
     {
+        if (documentFindOpen) _ = SetDocumentFindOpenAsync(false);
         settings.SidePaneOpen = true;
         searchOpen = true;
+        editorHadKeyboard = false;
+        refocusTicks = 0;
+        Services.WebViewCaret.Release(EditorView, NativeWindow());
         ApplySidePane();
         // Focus only sticks once the panel has been realized and laid out.
         DispatcherQueue.TryEnqueue(async () =>
@@ -1789,9 +2348,39 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     {
         searchOpen = false;
         ApplySidePane();
+        editorHadKeyboard = true;
+        Services.WebViewCaret.Focus(EditorView);
     }
 
     private bool searchOpen;
+
+    private async Task SetDocumentFindOpenAsync(bool open)
+    {
+        documentFindOpen = open;
+        if (open)
+        {
+            searchOpen = false;
+            settings.SidePaneOpen = true;
+            DocumentFindTitle.Text = Loc.Get("FindResultsTitle");
+            DocumentFindStatus.Text = "";
+            DocumentFindResults.ItemsSource = null;
+            findDocumentId = document?.DocumentId;
+            ApplySidePane();
+            await Post("FindDocument", new { documentId = findDocumentId });
+        }
+        else ApplySidePane();
+        await Post("FindResultsOpen", new { open });
+    }
+
+    private async void OnDocumentFindCloseClick(object sender, RoutedEventArgs e) => await SetDocumentFindOpenAsync(false);
+
+    private async void OnDocumentFindResultClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is not DocumentFindResult result || !documentFindOpen) return;
+        await Post("FindActivate", new { index = result.Index, version = result.Version });
+        editorHadKeyboard = true;
+        Services.WebViewCaret.Focus(EditorView);
+    }
 
     private void ApplyStatusBar() => StatusBar.Visibility = settings.StatusBarOpen ? Visibility.Visible : Visibility.Collapsed;
 
@@ -1826,10 +2415,12 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             updatingSideNav = false;
         }
         SearchPanel.Visibility = searchOpen ? Visibility.Visible : Visibility.Collapsed;
-        SideNav.Visibility = searchOpen ? Visibility.Collapsed : Visibility.Visible;
+        DocumentFindPanel.Visibility = documentFindOpen ? Visibility.Visible : Visibility.Collapsed;
+        SideNav.Visibility = searchOpen || documentFindOpen ? Visibility.Collapsed : Visibility.Visible;
         FileTree.Visibility = page == 0 ? Visibility.Visible : Visibility.Collapsed;
         OutlineList.Visibility = page == 1 ? Visibility.Visible : Visibility.Collapsed;
-        SidePaneTitle.Visibility = page == 0 ? Visibility.Visible : Visibility.Collapsed;
+        FolderHeader.Visibility = page == 0 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateFavoritesPane();
         OpenFolderButton.Visibility = page == 0 ? Visibility.Visible : Visibility.Collapsed;
         if (page == 0 && workFolder == null) SidePaneStatus.Text = Loc.Get("NoFolder");
     }
@@ -2091,11 +2682,15 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                     if (settings.SidePaneOpen && settings.SidePanePage == 1) RefreshOutline();
                     break;
                 case nameof(AppSettings.AlwaysShowTabBar): UpdateTabBar(); break;
+                case nameof(AppSettings.HomeOnEmptyTab): _ = RefreshHomeAsync(); break;
                 case nameof(AppSettings.StatusBarOpen): ApplyStatusBar(); break;
                 case nameof(AppSettings.ReadOnly): ApplyReadOnlyBadge(); UpdateTitle(); break;
                 case nameof(AppSettings.WordCountMethod): lastTocJson = null; break;
-                case nameof(AppSettings.RecentFiles): FillRecent(); break;
-                case nameof(AppSettings.Language): Loc.Apply(settings.Language); ApplyStrings(); BuildMenus(); UpdateTitle(); _ = PostContextMenuStrings(); break;
+                case nameof(AppSettings.RecentFiles): FillRecent(); if (homeVisible) _ = RefreshHomeAsync(); break;
+                case nameof(AppSettings.RecentFolders): FillRecentFolders(); if (homeVisible) _ = RefreshHomeAsync(); break;
+                case nameof(AppSettings.FavoritePaths): FillFavorites(); RefreshFavoritesPane(); if (homeVisible) _ = RefreshHomeAsync(); break;
+                case nameof(AppSettings.FavoritesExpanded): UpdateFavoritesPane(); break;
+                case nameof(AppSettings.Language): Loc.Apply(settings.Language); ApplyStrings(); BuildMenus(); UpdateTitle(); _ = PostContextMenuStrings(); _ = RefreshHomeAsync(); break;
                 case nameof(AppSettings.Shortcuts): BuildMenus(); _ = PostShortcutMap(); break;
             }
         });
@@ -2103,9 +2698,13 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
 
     private void ApplyStrings()
     {
+        DocumentFindTitle.Text = Loc.Get("FindResultsTitle");
         FilesNavItem.Content = Loc.Get("Files");
         OutlineNavItem.Content = Loc.Get("Outline");
+        FavoritesHeaderText.Text = Loc.Get("Favorites");
         ToolTipService.SetToolTip(SearchButton, Loc.Get("SearchInFolder"));
+        ToolTipService.SetToolTip(FolderUpButton, Loc.Get("ParentFolder"));
+        ToolTipService.SetToolTip(FolderRevealButton, Loc.Get("RevealCurrentFile"));
         SearchBox.PlaceholderText = Loc.Get("SearchPlaceholder");
         OpenFolderButton.Content = Loc.Get("OpenFolder");
         ApplyReadOnlyBadge();

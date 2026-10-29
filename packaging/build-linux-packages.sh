@@ -1,7 +1,7 @@
 #!/bin/bash
 # Builds the Linux distribution formats from a published folder:
 #   tar.gz   portable, extract and run
-#   .deb     Debian/Ubuntu package (declares the two runtime dependencies)
+#   .deb     Debian/Ubuntu package (declares runtime and emoji font dependencies)
 #   AppImage single executable (needs appimagetool; skipped when it is missing)
 #
 #   ./packaging/build-linux-packages.sh <published-dir> <version> [output-dir]
@@ -79,7 +79,7 @@ Version: $VERSION
 Section: editors
 Priority: optional
 Architecture: amd64
-Depends: libgtk-3-0 | libgtk-3-0t64, libwebkit2gtk-4.1-0, libx11-6
+Depends: libgtk-3-0 | libgtk-3-0t64, libwebkit2gtk-4.1-0, libx11-6, fonts-noto-color-emoji
 Maintainer: Typedown Community
 Description: Typedown (Uno Platform edition)
  Cross-platform Markdown editor with the Typedown/MarkText editing engine.

@@ -19,7 +19,7 @@ python3 Tools/Translations/generate.py --check
 
 桌面检查先构建（`dotnet build Typedown.Uno.sln`，读文字的检查还要 `Typedown.Cli`），再直接运行脚本，例如 `bash Tools/drop-check.sh`。
 
-- 每个脚本在 Xvfb 加 xfwm4 窗口管理器里启动程序，用一份临时的独立配置（`HOME`、`XDG_*` 都指向临时目录），不碰本机的 Typedown。需要 `Xvfb`、`xfwm4`、`xdotool`，部分脚本还要 `xwininfo`、ImageMagick 或带 GTK 3 的 python3，脚本开头写明。
+- 每个脚本在 Xvfb 加 xfwm4 窗口管理器里启动程序，用一份临时的独立配置（通过 `XDG_*`，部分脚本也设置 `HOME`），不碰本机的 Typedown。需要 `Xvfb`、`xfwm4`、`xdotool`，部分脚本还要 `xwininfo`、ImageMagick 或带 GTK 3 的 python3，脚本开头写明。
 - 一定要带窗口管理器：没有它，焦点、光标和窗口激活的问题看不出来。
 - 默认运行 Debug 构建。要换程序位置或 Xvfb 显示号，多数脚本用第 1、2 个参数；`image-upload-check.sh` 用环境变量 `APP`、`DISPLAY_NUMBER`。
 - 结果看输出里的 `PASS` / `FAIL` 行；检查多项的脚本最后还有一行 `OVERALL`。失败时附带程序日志的最后几行，有的还保留截图目录。
@@ -30,10 +30,13 @@ python3 Tools/Translations/generate.py --check
 
 <!-- BEGIN generated: checks -->
 - `drop-check.sh`: Files dragged in from a file manager (a GTK drag source here, as Thunar or Nautilus are): two images dropped on the editor go in at the caret (copied next to the document, as Settings > Images says), a document dropped on the tab strip opens, and typing still reaches the editor afterwards (the drop layer over the editor takes no keys).
+- `editor-refresh-check.sh`: A restored session shows both tabs but reads only the active file.
 - `focus-after-dialog-check.sh`: After the settings dialog is closed with Escape, the keyboard is the editor's again: a letter typed without a click reaches the document, and Ctrl+, opens the settings again.
 - `image-paste-check.sh`: A picture copied in Chromium ("Copy image": the picture as image/png and an <img> as text/html, no plain text) and pasted with Ctrl+V goes into the document: saved next to it, as Settings > Images says, and linked.
 - `image-upload-check.sh`: File > Upload local images on Linux, with real keys: each local picture goes up once (a command of the person's own here; the S3 path is the Windows edition's code, tested there against a real bucket), every use of it changes to its address, a web image, a missing file and code stay; an undo and a second run take every address from the upload history without calling the command again.
+- `large-document-check.sh`: Three large restored tabs: progressive drawing, tab switching, edits, saves, and external reload.
 - `reading-copy-check.sh`: Reading mode, with real keys and the page's own context menu: Ctrl+Z after an edit changes nothing (the history's undo replaced the text there), Ctrl+A selects the document, Copy puts the Markdown on the clipboard and Copy as plain text the text without it.
+- `recovery-refresh-check.sh`: A dirty restored document writes a crash backup.
 - `reveal-change-check.sh`: reveal: "change" scrolls a change made off screen into view; "document" leaves the page where it was.
 - `settings-revision-check.sh`: settingsRevision moves with the exposed settings only.
 - `theme-switch-check.sh`: The theme changed while the app runs must look the way it does after a restart.

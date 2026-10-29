@@ -86,6 +86,17 @@
     }
 
     function deliver(data) {
+        // Select the diagram engine before the editor consumes GetSettings or SettingsChanged. The renderer
+        // wrapper stays stable, so the bundled editor can keep its cached Mermaid API reference.
+        if (window.__unoSetMermaidRenderer) {
+            try {
+                var message = JSON.parse(data);
+                var renderer = message && message.name === 'SettingsChanged'
+                    ? message.args && message.args.mermaidRenderer
+                    : message && message.args && message.args.data && message.args.data.mermaidRenderer;
+                if (renderer) window.__unoSetMermaidRenderer(renderer);
+            } catch (e) { console.error('diagram renderer setting', e); }
+        }
         if (native && typeof native.dispatchEvent === 'function') {
             native.dispatchEvent(new MessageEvent('message', { data: data }));
             return;
@@ -93,6 +104,25 @@
         listeners.forEach(function (l) { try { l({ data: data }); } catch (e) { console.error(e); } });
     }
     function local(name, args) { deliver(JSON.stringify({ name: name, args: args })); }
+
+    var richCopySerial = 0;
+    function invokeHost(name, args) {
+        return new Promise(function (resolve, reject) {
+            var id = 'uno_rich_copy_' + (++richCopySerial);
+            var timer = setTimeout(function () { finish(); reject(new Error(name + ' timed out')); }, 10000);
+            function finish() { clearTimeout(timer); window.chrome.webview.removeEventListener('message', reply); }
+            function reply(event) {
+                var message;
+                try { message = typeof event.data === 'string' ? JSON.parse(event.data) : event.data; } catch (e) { return; }
+                if (!message || message.name !== id) return;
+                finish();
+                if (message.args && message.args.code === 0) resolve(message.args.data);
+                else reject(new Error(message.args && message.args.msg || name + ' failed'));
+            }
+            window.chrome.webview.addEventListener('message', reply);
+            send(JSON.stringify({ type: 'invoke', id: id, name: name, args: args }));
+        });
+    }
 
     // UI the editor expects the host to draw. The editor's reports are sent diffed, so the host reassembles them
     // and hands each one back as "ShowFloat"; the drawing happens here because a host popup cannot cover the
@@ -105,13 +135,126 @@
         OpenToolTip: function (a) { showToolTip(a); }
     };
 
+    // Home stays in this page: on Linux the editor is a native WebKit child above XAML overlays.
+    // All path labels are text nodes, and the host validates a chosen path against its own recent/favorite lists.
+    var homeOverlay = null, homeVersion = -1;
+    function homeAction(action, path) {
+        send(JSON.stringify({ type: 'message', name: 'HomeAction', args: { action: action, path: path || null } }));
+    }
+    function updateHome(args) {
+        if (!args || typeof args.version !== 'number' || args.version < homeVersion) return;
+        homeVersion = args.version;
+        if (!args.show) {
+            if (homeOverlay) {
+                if (homeOverlay.contains(document.activeElement)) document.activeElement.blur();
+                homeOverlay.style.display = 'none';
+            }
+            return;
+        }
+        hideDiagramCopyButton();
+        var firstOpen = !homeOverlay || homeOverlay.style.display === 'none';
+        var hadFocus = homeOverlay && homeOverlay.contains(document.activeElement);
+        if (!homeOverlay) {
+            homeOverlay = document.createElement('main');
+            homeOverlay.id = 'uno-home';
+            homeOverlay.style.cssText = 'position:fixed;inset:0;z-index:90000;overflow:auto;box-sizing:border-box;' +
+                'background:var(--editorBgColor,#f9f9f9);color:var(--editorColor,#222);font:14px system-ui,sans-serif;';
+            document.body.appendChild(homeOverlay);
+        }
+        homeOverlay.style.display = 'block';
+        homeOverlay.replaceChildren();
+        var content = document.createElement('div');
+        content.style.cssText = 'max-width:980px;margin:0 auto;padding:clamp(28px,7vh,72px) 32px 64px;';
+        homeOverlay.appendChild(content);
+        var title = document.createElement('h1');
+        title.textContent = args.strings.title;
+        title.style.cssText = 'font-size:32px;font-weight:600;margin:0 0 26px;letter-spacing:-.03em;';
+        content.appendChild(title);
+        var actions = document.createElement('div');
+        actions.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;margin-bottom:36px;';
+        content.appendChild(actions);
+        function quick(label, action) {
+            var button = document.createElement('button');
+            button.type = 'button'; button.textContent = label;
+            button.style.cssText = 'min-width:145px;padding:12px 18px;border-radius:8px;border:1px solid var(--floatBorderColor,#ccc);' +
+                'background:var(--itemBgColor,#fff);color:var(--editorColor,#222);font:inherit;text-align:left;cursor:pointer;';
+            button.addEventListener('click', function () { homeAction(action); });
+            actions.appendChild(button);
+            return button;
+        }
+        var first = quick(args.strings.newFile, 'new');
+        quick(args.strings.openFile, 'openFile');
+        quick(args.strings.openFolder, 'openFolder');
+        var groups = document.createElement('div');
+        groups.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:24px;';
+        content.appendChild(groups);
+        function homeIcon(folder) {
+            var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('viewBox', '0 0 24 24');
+            svg.setAttribute('width', '17');
+            svg.setAttribute('height', '17');
+            svg.setAttribute('fill', 'none');
+            svg.setAttribute('stroke', 'currentColor');
+            svg.setAttribute('stroke-width', '1.7');
+            svg.setAttribute('stroke-linejoin', 'round');
+            svg.style.cssText = 'flex:none;opacity:.75;';
+            var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', folder
+                ? 'M3 6.5a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'
+                : 'M6 3.5h8l4 4v13H6a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2zm8 0v4h4M8 12h6M8 16h6');
+            svg.appendChild(path);
+            return svg;
+        }
+        function section(label, items, action) {
+            var group = document.createElement('section');
+            var heading = document.createElement('h2');
+            heading.textContent = label;
+            heading.style.cssText = 'font-size:15px;font-weight:600;margin:0 0 12px;';
+            group.appendChild(heading);
+            if (!items.length) {
+                var empty = document.createElement('p');
+                empty.textContent = args.strings.empty;
+                empty.style.cssText = 'opacity:.55;margin:0;';
+                group.appendChild(empty);
+            }
+            items.forEach(function (item) {
+                var button = document.createElement('button');
+                button.type = 'button';
+                button.title = item.path;
+                button.style.cssText = 'display:block;width:100%;padding:9px 10px;margin-bottom:3px;border:0;border-radius:6px;' +
+                    'background:transparent;color:var(--editorColor,#222);font:inherit;text-align:left;cursor:pointer;';
+                var name = document.createElement('span');
+                name.style.cssText = 'display:flex;align-items:center;gap:8px;min-width:0;';
+                var label = document.createElement('span');
+                label.textContent = item.name;
+                label.style.cssText = 'display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+                name.appendChild(homeIcon(item.folder));
+                name.appendChild(label);
+                var path = document.createElement('small');
+                path.textContent = item.path;
+                path.style.cssText = 'display:block;opacity:.55;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+                button.appendChild(name); button.appendChild(path);
+                button.addEventListener('mouseenter', function () { button.style.background = 'var(--itemBgColor,#eee)'; });
+                button.addEventListener('mouseleave', function () { button.style.background = 'transparent'; });
+                button.addEventListener('click', function () { homeAction(action, item.path); });
+                group.appendChild(button);
+            });
+            groups.appendChild(group);
+        }
+        section(args.strings.recentFiles, args.recentFiles || [], 'recentFile');
+        section(args.strings.recentFolders, args.recentFolders || [], 'recentFolder');
+        section(args.strings.favorites, args.favorites || [], 'favorite');
+        if (firstOpen || hadFocus) setTimeout(function () { first.focus(); }, 0);
+    }
+
     // In-page find bar. Keyboard focus cannot be moved from the native web view to the host window on Linux/macOS,
     // so the find UI lives in the page and drives the editor's own Search/Find handlers directly.
     var findBar = null, findInput = null, findCount = null, findRow = null, replaceRow = null, replaceInput = null;
+    var findResultsOpen = false, findResultsTimer = null;
     // Labels for the find bar; replaced by the host (see "FindStrings") in the interface language.
     var findStrings = {
         find: 'Find', replaceWith: 'Replace with', replace: 'Replace', replaceAll: 'Replace all',
-        previous: 'Previous (Shift+Enter)', next: 'Next (Enter)', close: 'Close (Esc)',
+        previous: 'Previous (Shift+Enter)', next: 'Next (Enter)', close: 'Close (Esc)', results: 'Results',
     };
     var findOptions = { searchIsCaseSensitive: false, searchIsWholeWord: false, searchIsRegexp: false };
     // "Find next" starts after the caret, so the editor needs to be told where it is; with no caret the search
@@ -123,12 +266,41 @@
     }
     function runSearch() {
         local('Search', { value: findInput.value, opt: searchOptions() });
-        setTimeout(function () {
-            var muya = window.__typedownMuya;
-            var matches = muya && muya.contentState && muya.contentState.searchMatches && muya.contentState.searchMatches.matches;
-            var n = matches ? matches.length : document.querySelectorAll('.ag-selection, .ag-highlight').length;
+        clearTimeout(findResultsTimer);
+        findResultsTimer = setTimeout(function () {
+            var source = sourceEditor();
+            var cs = findState();
+            var matches = cs && cs.searchMatches && cs.searchMatches.matches;
+            var n = source ? sourceMatches(source).length : matches ? matches.length : 0;
             findCount.textContent = findInput.value ? String(n) : '';
+            // The editor reports model-based FindResults and FindState itself.
         }, 80);
+    }
+    function sourceEditor() {
+        var wrapper = document.querySelector('.CodeMirror');
+        return wrapper && wrapper.CodeMirror || null;
+    }
+    function sourceMatches(cm) {
+        if (!findInput || !findInput.value) return [];
+        var pattern = findOptions.searchIsRegexp ? findInput.value : findInput.value.replace(/[\[\]\\^$.|?*+()/]/g, '\\$&');
+        if (findOptions.searchIsWholeWord) pattern = '\\b' + pattern + '\\b';
+        var re;
+        try { re = new RegExp(pattern, findOptions.searchIsCaseSensitive ? 'g' : 'gi'); }
+        catch (e) { return []; }
+        var text = cm.getValue(), matches = [], match;
+        while ((match = re.exec(text)) !== null) {
+            if (match[0].length) matches.push({ start: match.index, end: re.lastIndex });
+            else re.lastIndex++;
+        }
+        return matches;
+    }
+    function findState() {
+        if (sourceEditor()) return null;
+        var muya = window.__typedownMuya;
+        return muya && muya.contentState;
+    }
+    function stepFind(action) {
+        local('Find', { action: action });
     }
     function ensureFindBar() {
         if (findBar) return;
@@ -163,8 +335,11 @@
         replaceInput.style.cssText = findInput.style.cssText;
         findRow.appendChild(findInput);
         findRow.appendChild(findCount);
-        findRow.appendChild(button('\u2191', findStrings.previous, function () { local('Find', { action: 'prev' }); }));
-        findRow.appendChild(button('\u2193', findStrings.next, function () { local('Find', { action: 'next' }); }));
+        findRow.appendChild(button('\u2191', findStrings.previous, function () { stepFind('prev'); }));
+        findRow.appendChild(button('\u2193', findStrings.next, function () { stepFind('next'); }));
+        findRow.appendChild(button('\u2630', findStrings.results, function () {
+            send(JSON.stringify({ type: 'message', name: 'DocumentFindToggle', args: { open: !findResultsOpen } }));
+        }));
         findRow.appendChild(button('\u21c4', findStrings.replace, toggleReplace));
         findRow.appendChild(button('\u2715', findStrings.close, hideFind));
         replaceRow.appendChild(replaceInput);
@@ -180,7 +355,7 @@
         findBar.appendChild(replaceRow);
         findInput.addEventListener('input', runSearch);
         findInput.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter') { e.preventDefault(); local('Find', { action: e.shiftKey ? 'prev' : 'next' }); }
+            if (e.key === 'Enter') { e.preventDefault(); stepFind(e.shiftKey ? 'prev' : 'next'); }
             else if (e.key === 'Escape') { e.preventDefault(); hideFind(); }
             else if (e.key === 'Tab' && !e.shiftKey && replaceRow.style.display !== 'none') { e.preventDefault(); replaceInput.focus(); }
             e.stopPropagation();
@@ -220,7 +395,7 @@
         if (command === 'find') { showFind(); return true; }
         if (command === 'findNext' || command === 'findPrevious') {
             if (!findBar || findBar.style.display === 'none' || !findInput.value) { showFind(); return true; }
-            local('Find', { action: command === 'findNext' ? 'next' : 'prev' });
+            stepFind(command === 'findNext' ? 'next' : 'prev');
             return true;
         }
         return false;
@@ -231,6 +406,7 @@
         findBar.style.display = 'none';
         local('Search', { value: '', opt: searchOptions() });
         local('SearchOpenChange', { open: 0 });
+        if (findResultsOpen) send(JSON.stringify({ type: 'message', name: 'DocumentFindToggle', args: { open: false } }));
         var editor = document.getElementById('ag-editor-id') || document.querySelector('.CodeMirror textarea');
         if (editor) editor.focus();
     }
@@ -239,7 +415,7 @@
     // In-page context menu. The editor suppresses the native menu (it expects the host to show its own), and on
     // Linux the web view is a separate native window, so a host flyout would be drawn behind it: the menu lives
     // in the page, like the find bar. Labels come from the host ("ContextMenuStrings").
-    var menuStrings = { copy: 'Copy', copyAsPlainText: 'Copy as plain text', cut: 'Cut', paste: 'Paste', selectAll: 'Select all' };
+    var menuStrings = { copy: 'Copy', copyContent: 'Copy content', copyAsPlainText: 'Copy as plain text', cut: 'Cut', paste: 'Paste', selectAll: 'Select all' };
     var contextMenu = null;
 
     function isReadOnly() {
@@ -271,7 +447,194 @@
         local('SelectAll');
     }
 
-    function showContextMenu(x, y) {
+    function tableHtml(figure) {
+        var table = figure.querySelector('table');
+        if (!table) return null;
+        var copy = table.cloneNode(true);
+        copy.querySelectorAll('.ag-hide,.ag-remove,.ag-table-tool,[contenteditable="false"]:not(th):not(td)').forEach(function (node) { node.remove(); });
+        copy.querySelectorAll('th,td').forEach(function (cell) {
+            var align = cell.style.textAlign || cell.getAttribute('align');
+            if (align === 'left' || align === 'center' || align === 'right') cell.setAttribute('align', align);
+        });
+        copy.querySelectorAll('*').forEach(function (node) {
+            Array.from(node.attributes).forEach(function (attr) {
+                if (attr.name === 'href' || attr.name === 'src') {
+                    try { node.setAttribute(attr.name, new URL(attr.value, document.baseURI).href); } catch (e) { }
+                } else if (!['colspan', 'rowspan', 'align', 'alt', 'title'].includes(attr.name)) node.removeAttribute(attr.name);
+            });
+        });
+        copy.removeAttribute('id'); copy.removeAttribute('class');
+        copy.setAttribute('border', '1');
+        copy.setAttribute('cellspacing', '0');
+        copy.setAttribute('cellpadding', '4');
+        copy.setAttribute('style', 'border-collapse:collapse');
+        return copy.outerHTML;
+    }
+
+    async function previewPng(figure) {
+        var preview = figure.querySelector(':scope > .ag-container-preview');
+        if (!preview || preview.classList.contains('ag-plantuml-off') || preview.classList.contains('ag-empty')) return null;
+        var source = preview.querySelector('svg, img');
+        if (!source) return null;
+        var rect = source.getBoundingClientRect();
+        var box = source.tagName.toLowerCase() === 'svg' && source.viewBox && source.viewBox.baseVal;
+        var width = Math.ceil(rect.width || (box && box.width) || source.naturalWidth || 0);
+        var height = Math.ceil(rect.height || (box && box.height) || source.naturalHeight || 0);
+        if (!(width > 0 && height > 0)) return null;
+        var scale = Math.min(2, 8000 / width, 8000 / height, Math.sqrt(16000000 / (width * height)));
+        var canvas = document.createElement('canvas');
+        canvas.width = Math.ceil(width * scale); canvas.height = Math.ceil(height * scale);
+        var context = canvas.getContext('2d');
+        if (!context) return null;
+        context.fillStyle = '#fff'; context.fillRect(0, 0, canvas.width, canvas.height);
+        var image = new Image(), url = null;
+        try {
+            if (source.tagName.toLowerCase() === 'svg') {
+                var clone = source.cloneNode(true);
+                clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+                clone.setAttribute('width', width); clone.setAttribute('height', height);
+                var originals = [source].concat(Array.from(source.querySelectorAll('*')));
+                var clones = [clone].concat(Array.from(clone.querySelectorAll('*')));
+                originals.forEach(function (node, index) {
+                    var css = getComputedStyle(node);
+                    var style = clones[index].style;
+                    ['fill', 'stroke', 'stroke-width', 'color', 'font-family', 'font-size', 'font-weight', 'text-anchor', 'opacity'].forEach(function (key) {
+                        style.setProperty(key, css.getPropertyValue(key));
+                    });
+                });
+                // Chromium treats an SVG image with foreignObject (Mermaid's HTML labels) as a tainted canvas.
+                // SVG text remains readable and can be rasterized into a clipboard PNG.
+                clone.querySelectorAll('foreignObject').forEach(function (foreign) {
+                    var label = foreign.textContent.trim();
+                    var replacement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    var x = parseFloat(foreign.getAttribute('x') || '0');
+                    var y = parseFloat(foreign.getAttribute('y') || '0');
+                    var w = parseFloat(foreign.getAttribute('width') || '0');
+                    var h = parseFloat(foreign.getAttribute('height') || '0');
+                    replacement.setAttribute('x', String(x + w / 2));
+                    replacement.setAttribute('y', String(y + h / 2));
+                    replacement.setAttribute('text-anchor', 'middle');
+                    replacement.setAttribute('dominant-baseline', 'middle');
+                    replacement.setAttribute('font-size', '14');
+                    replacement.setAttribute('fill', '#333');
+                    replacement.textContent = label;
+                    foreign.replaceWith(replacement);
+                });
+                url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(clone)], { type: 'image/svg+xml' }));
+            }
+            await new Promise(function (resolve, reject) {
+                image.onload = resolve; image.onerror = reject;
+                image.src = url || source.currentSrc || source.src;
+            });
+            context.drawImage(image, 0, 0, canvas.width, canvas.height);
+            return canvas.toDataURL('image/png').slice('data:image/png;base64,'.length);
+        } catch (e) {
+            console.warn('copy picture failed', e);
+            return null;
+        } finally { if (url) URL.revokeObjectURL(url); }
+    }
+
+    async function copyRichFigure(figure) {
+        if (!figure || !figure.id) return false;
+        var state = window.__typedownMuya && window.__typedownMuya.contentState;
+        if (state && typeof state.copyBlock === 'function') return !!(await state.copyBlock(figure));
+        // Older bundles export the block Markdown first; the host replies after its text/plain clipboard call.
+        var block = state && state.getBlock(figure.id);
+        if (!block) return false;
+        var sourceKey = null;
+        function findSource(part) {
+            if (sourceKey) return;
+            if (part.type === 'span' && state.getAnchor(part) === block) { sourceKey = part.key; return; }
+            (part.children || []).forEach(findSource);
+        }
+        findSource(block);
+        if (!sourceKey) return false;
+        var copyId = 'block-' + Date.now() + '-' + (++richCopySerial);
+        try { await invokeHost('BeginRichCopy', { id: copyId }); }
+        catch (e) { return false; }
+        var selectedCells = state && state.selectedTableCells;
+        var selectedImage = state && state.selectedImage;
+        if (state) { state.selectedTableCells = null; state.selectedImage = null; }
+        try { local('Copy', { type: 'copyBlock', copyInfo: sourceKey }); }
+        finally { if (state) { state.selectedTableCells = selectedCells; state.selectedImage = selectedImage; } }
+        try {
+            var text = await invokeHost('CopiedBlockSource', { id: copyId });
+            if (!text) return false;
+            var html = figure.matches('[data-role="TABLE"]') ? tableHtml(figure) : null;
+            var png = html ? null : await previewPng(figure);
+            return html || png ? !!(await invokeHost('CopyRichBlock', { text: text, html: html, png: png })) : false;
+        } catch (e) { console.warn('copy block failed', e); return false; }
+    }
+
+    // The editor's code-copy icon sits in the folded <pre>, underneath a rendered diagram. Draw one button
+    // above the preview without inserting nodes into Muya's virtual DOM; Muya may replace the preview at any time.
+    var diagramCopyButton = null, diagramCopyFigure = null, diagramCopyTimer = null;
+    function hideDiagramCopyButton() {
+        if (diagramCopyButton) diagramCopyButton.style.display = 'none';
+        diagramCopyFigure = null;
+    }
+    function showDiagramCopyButton(preview) {
+        if (preview.classList.contains('ag-empty') || preview.classList.contains('ag-plantuml-off')
+            || !preview.querySelector('svg, img')) { hideDiagramCopyButton(); return; }
+        var figure = preview.closest('figure[data-role]');
+        if (!figure || !/^(MERMAID|PLANTUML|FLOWCHART|SEQUENCE|VEGA-LITE)$/.test(figure.dataset.role)) {
+            hideDiagramCopyButton(); return;
+        }
+        // The current editor draws its own copy button for diagrams, tables and display formulas.
+        if (figure.querySelector('.ag-diagram-copy')) { hideDiagramCopyButton(); return; }
+        if (!diagramCopyButton) {
+            diagramCopyButton = document.createElement('button');
+            diagramCopyButton.type = 'button';
+            diagramCopyButton.id = 'uno-diagram-copy';
+            diagramCopyButton.className = 'ag-code-copy';
+            diagramCopyButton.style.cssText = 'position:fixed;right:auto;z-index:100000;display:none;width:20px;height:20px;padding:0;' +
+                'border:0;background:transparent;box-shadow:none;appearance:none;cursor:default;opacity:.5;';
+            // Same icon, size and copied check as the editor's code-block button.
+            diagramCopyButton.innerHTML = '<span class="icon" style="display:inline-flex;align-items:center;justify-content:center">' +
+                '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6"' +
+                ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+                '<rect x="8.5" y="8.5" width="11" height="11" rx="1.5"/>' +
+                '<path d="M15.5 5.5H5.5a1 1 0 0 0-1 1v10"/></svg></span>';
+            document.body.appendChild(diagramCopyButton);
+            diagramCopyButton.addEventListener('mousedown', function (e) { e.preventDefault(); e.stopPropagation(); });
+            diagramCopyButton.addEventListener('click', async function (e) {
+                e.preventDefault(); e.stopPropagation();
+                var target = diagramCopyFigure && document.getElementById(diagramCopyFigure.id);
+                if (!target) return;
+                diagramCopyButton.disabled = true;
+                var copied = await copyRichFigure(target);
+                diagramCopyButton.disabled = false;
+                if (!copied || diagramCopyFigure !== target) return;
+                diagramCopyButton.classList.add('ag-code-copied');
+                clearTimeout(diagramCopyTimer);
+                diagramCopyTimer = setTimeout(function () {
+                    diagramCopyButton.classList.remove('ag-code-copied');
+                    diagramCopyButton.style.opacity = diagramCopyButton.matches(':hover') ? '1' : '.5';
+                }, 1500);
+            });
+            diagramCopyButton.addEventListener('mouseenter', function () { diagramCopyButton.style.opacity = '1'; });
+            diagramCopyButton.addEventListener('mouseleave', function () { diagramCopyButton.style.opacity = '.5'; });
+        }
+        var rect = preview.getBoundingClientRect();
+        if (rect.width < 36 || rect.bottom <= 0 || rect.top >= innerHeight) { hideDiagramCopyButton(); return; }
+        var imageRect = preview.querySelector('svg, img').getBoundingClientRect();
+        diagramCopyFigure = figure;
+        diagramCopyButton.title = menuStrings.copyContent;
+        diagramCopyButton.setAttribute('aria-label', menuStrings.copyContent);
+        diagramCopyButton.style.left = Math.max(rect.left + 4, Math.min(imageRect.right + 8, rect.right - 24, innerWidth - 24)) + 'px';
+        diagramCopyButton.style.top = Math.max(4, imageRect.top + 4) + 'px';
+        diagramCopyButton.style.display = 'block';
+    }
+    document.addEventListener('mouseover', function (e) {
+        if (diagramCopyButton && diagramCopyButton.contains(e.target)) return;
+        var preview = e.target.closest && e.target.closest('#ag-editor-id figure[data-role] > .ag-container-preview');
+        if (preview) showDiagramCopyButton(preview);
+        else hideDiagramCopyButton();
+    }, true);
+    document.addEventListener('scroll', hideDiagramCopyButton, true);
+    document.addEventListener('mouseleave', hideDiagramCopyButton);
+
+    function showContextMenu(x, y, target) {
         if (!contextMenu) {
             contextMenu = document.createElement('div');
             contextMenu.id = 'uno-context-menu';
@@ -287,6 +650,8 @@
         // often enough that the host is the reliable way to reach the clipboard.
         var text = selectedText();
         var hasSelection = !!text;
+        var figure = target && target.closest && target.closest('#ag-editor-id figure[data-role]');
+        if (figure && !figure.matches('[data-role="TABLE"]') && !figure.querySelector(':scope > .ag-container-preview')) figure = null;
         function copyToHost() { send(JSON.stringify({ type: 'message', name: 'ClipboardSetText', args: { text: text } })); }
         // Clicking the menu collapses the selection, and cut/paste act on the editor's own cursor: remember it
         // while the menu opens and put it back before handing the command over.
@@ -311,6 +676,7 @@
         contextMenu.textContent = '';
         // Cut and paste change the document, so reading mode only offers copy and select all.
         var items = [
+            { label: menuStrings.copyContent, enabled: !!figure, hidden: !figure, run: function () { copyRichFigure(figure); } },
             // The editor's own copy puts Markdown and HTML on the clipboard (the host's SetClipboard), which keeps
             // bold, code and links across a copy/paste; plain text is the fallback when there is no editor.
             { label: menuStrings.copy, enabled: hasSelection, run: function () { if (!editorClipboard('Copy')) copyToHost(); } },
@@ -352,7 +718,7 @@
         if (contextMenu && contextMenu.contains(e.target)) { e.preventDefault(); return; }
         e.preventDefault();
         // the editor's own handler runs too and keeps its cursor in step; only the native menu is suppressed
-        showContextMenu(e.clientX, e.clientY);
+        showContextMenu(e.clientX, e.clientY, e.target);
         // capture: the editor stops the event from bubbling out of its container
     }, true);
     window.addEventListener('mousedown', function (e) {
@@ -590,10 +956,23 @@
                 return;
             }
             if (msg && msg.name === 'ContextMenuStrings') { menuStrings = Object.assign(menuStrings, msg.args || {}); return; }
+            if (msg && msg.name === 'HomeState') { updateHome(msg.args); return; }
             if (msg && msg.name === 'FindStrings') {
                 findStrings = Object.assign(findStrings, msg.args || {});
                 if (findInput) findInput.placeholder = findStrings.find;
                 if (replaceInput) replaceInput.placeholder = findStrings.replaceWith;
+                return;
+            }
+            if (msg && msg.name === 'FindDocument') return;
+            if (msg && msg.name === 'FindRefresh') { if (findResultsOpen && findInput && findInput.value) runSearch(); return; }
+            if (msg && msg.name === 'FindResultsOpen') {
+                findResultsOpen = !!(msg.args && msg.args.open);
+                if (findResultsOpen) ensureFindBar();
+                deliver(data);
+                return;
+            }
+            if (msg && msg.name === 'FindActivate') {
+                deliver(data);
                 return;
             }
             if (msg && msg.name === 'ShowFloat') {
@@ -603,6 +982,7 @@
             }
             if (msg && msg.name === 'ShowFind') { if (msg.args && msg.args.opt) findOptions = msg.args.opt; showFind(msg.args && msg.args.value, msg.args && msg.args.replace); return; }
             if (msg && msg.name === 'HideFind') { hideFind(); return; }
+            if (msg && msg.name === 'Find') { deliver(data); return; }
         } catch (e) { }
         deliver(data);
     };

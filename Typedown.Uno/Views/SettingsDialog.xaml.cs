@@ -102,6 +102,7 @@ public sealed partial class SettingsDialog : ContentDialog
         FolderRow("StartupFolder", () => settings.StartupFolder, v => settings.StartupFolder = v);
         Toggle("OpenFilesInNewTab", settings.OpenFilesInNewTab, v => settings.OpenFilesInNewTab = v);
         Toggle("AlwaysShowTabBar", settings.AlwaysShowTabBar, v => settings.AlwaysShowTabBar = v);
+        Toggle("HomeOnEmptyTab", settings.HomeOnEmptyTab, v => settings.HomeOnEmptyTab = v);
         Toggle("StatusBar", settings.StatusBarOpen, v => settings.StatusBarOpen = v);
         Toggle("LocalAutomation", settings.AllowLocalAutomation, v => settings.AllowLocalAutomation = v, "LocalAutomationDescription");
         Toggle("HighlightAutomationChanges", settings.HighlightAutomationChanges, v => settings.HighlightAutomationChanges = v, "HighlightAutomationChangesDescription");
@@ -126,11 +127,17 @@ public sealed partial class SettingsDialog : ContentDialog
         Toggle("LooseList", settings.PreferLooseListItem, v => settings.PreferLooseListItem = v);
         Toggle("TrimCodeBlock", settings.TrimUnnecessaryCodeBlockEmptyLines, v => settings.TrimUnnecessaryCodeBlockEmptyLines = v);
         Toggle("ParagraphMarker", settings.ShowParagraphMarker, v => settings.ShowParagraphMarker = v);
+        Toggle("ShowBlankLines", settings.ShowBlankLines, v => settings.ShowBlankLines = v);
+        Toggle("ShowMarkdownMarks", settings.ShowMarkdownMarks, v => settings.ShowMarkdownMarks = v);
+        Toggle("ProgressiveRendering", settings.ProgressiveRendering, v => settings.ProgressiveRendering = v, "ProgressiveRenderingDescription");
+        Toggle("PredictHeights", settings.PredictHeights, v => settings.PredictHeights = v, "PredictHeightsDescription");
         Toggle("Spellcheck", settings.SpellcheckEnabled, v => settings.SpellcheckEnabled = v);
         Toggle("AutoPairBracket", settings.AutoPairBracket, v => settings.AutoPairBracket = v);
         Toggle("AutoPairQuote", settings.AutoPairQuote, v => settings.AutoPairQuote = v);
         Toggle("AutoPairMarkdown", settings.AutoPairMarkdownSyntax, v => settings.AutoPairMarkdownSyntax = v);
         Toggle("VimMode", settings.VimMode, v => settings.VimMode = v, "VimModeDescription");
+        Combo("MermaidRenderer", new[] { "Mermaid", "Pele" }, settings.MermaidRenderer == "pele" ? 1 : 0,
+            i => settings.MermaidRenderer = i == 1 ? "pele" : "mermaid");
         Toggle("RenderPlantUml", settings.RenderPlantUml, v => settings.RenderPlantUml = v, "RenderPlantUmlDescription");
         Text("PlantUmlServer", settings.PlantUmlServer, v => settings.PlantUmlServer = v, hint: "https://www.plantuml.com/plantuml");
         MultilineText("CustomCss", settings.CustomCss, v => settings.CustomCss = v);

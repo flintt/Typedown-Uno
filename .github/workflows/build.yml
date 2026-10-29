@@ -79,6 +79,22 @@ jobs:
             ./packaging/add-cli.sh publish/Typedown-${{ matrix.name }} ${{ matrix.rid }}
           fi
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Exercise Pele and Mermaid in the bundled editor
+        shell: bash
+        run: |
+          case "${{ runner.os }}" in
+            Linux)   CHROME="$(command -v google-chrome || command -v chromium)" ;;
+            Windows) CHROME='C:/Program Files/Google/Chrome/Application/chrome.exe' ;;
+            macOS)   CHROME='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' ;;
+          esac
+          test -f "$CHROME"
+          export CHROME
+          node Tools/rich-copy-check.js
+
       - name: macOS app bundle (Typedown.app)
         if: runner.os == 'macOS'
         shell: bash
@@ -90,6 +106,16 @@ jobs:
           rm -rf "publish/Typedown-${{ matrix.name }}"
           mkdir "publish/Typedown-${{ matrix.name }}"
           mv "publish/app-${{ matrix.name }}/Typedown.app" "publish/Typedown-${{ matrix.name }}/"
+
+      - name: Packaged desktop startup
+        if: runner.os == 'Windows' || runner.os == 'macOS'
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = Windows ]; then
+            python Tools/desktop-startup-check.py "publish/Typedown-${{ matrix.name }}/Typedown.Uno.exe"
+          else
+            python3 Tools/desktop-startup-check.py "publish/Typedown-${{ matrix.name }}/Typedown.app/Contents/MacOS/Typedown"
+          fi
 
       - name: Archive
         shell: bash

@@ -62,6 +62,10 @@ public sealed class AppSettings : INotifyPropertyChanged
     private bool alwaysShowTabBar;
     public bool AlwaysShowTabBar { get => alwaysShowTabBar; set => Set(ref alwaysShowTabBar, value); }
 
+    private bool homeOnEmptyTab;
+    /// <summary>Show quick actions and recent paths in an empty, saved tab.</summary>
+    public bool HomeOnEmptyTab { get => homeOnEmptyTab; set => Set(ref homeOnEmptyTab, value); }
+
     // ---- editor (names match the editor's option keys) ----
     private int fontSize = 16;
     [EditorOption] public int FontSize { get => fontSize; set => Set(ref fontSize, value); }
@@ -104,6 +108,18 @@ public sealed class AppSettings : INotifyPropertyChanged
     private bool showParagraphMarker = true;
     [EditorOption] public bool ShowParagraphMarker { get => showParagraphMarker; set => Set(ref showParagraphMarker, value); }
 
+    private bool showBlankLines;
+    [EditorOption] public bool ShowBlankLines { get => showBlankLines; set => Set(ref showBlankLines, value); }
+
+    private bool showMarkdownMarks;
+    [EditorOption] public bool ShowMarkdownMarks { get => showMarkdownMarks; set => Set(ref showMarkdownMarks, value); }
+
+    private bool progressiveRendering = true;
+    [EditorOption] public bool ProgressiveRendering { get => progressiveRendering; set => Set(ref progressiveRendering, value); }
+
+    private bool predictHeights;
+    [EditorOption] public bool PredictHeights { get => predictHeights; set => Set(ref predictHeights, value); }
+
     private bool spellcheckEnabled;
     [EditorOption] public bool SpellcheckEnabled { get => spellcheckEnabled; set => Set(ref spellcheckEnabled, value); }
 
@@ -120,6 +136,14 @@ public sealed class AppSettings : INotifyPropertyChanged
     // turns it on. Off, the editor shows a line saying so instead of the diagram.
     private bool renderPlantUml;
     [EditorOption] public bool RenderPlantUml { get => renderPlantUml; set => Set(ref renderPlantUml, value); }
+
+    // Uno experiment: both engines accept Mermaid fences. Keep Mermaid as the default for existing users.
+    private string mermaidRenderer = "mermaid";
+    [EditorOption] public string MermaidRenderer
+    {
+        get => mermaidRenderer;
+        set => Set(ref mermaidRenderer, value == "pele" ? "pele" : "mermaid");
+    }
 
     // The plantuml-server that draws them (an http(s) address); empty or anything else: plantuml.com.
     private string plantUmlServer = "";
@@ -277,6 +301,15 @@ public sealed class AppSettings : INotifyPropertyChanged
     private List<string> recentFiles = new();
     public List<string> RecentFiles { get => recentFiles; set => Set(ref recentFiles, value); }
 
+    private List<string> recentFolders = new();
+    public List<string> RecentFolders { get => recentFolders; set => Set(ref recentFolders, value); }
+
+    private List<string> favoritePaths = new();
+    public List<string> FavoritePaths { get => favoritePaths; set => Set(ref favoritePaths, value); }
+
+    private bool favoritesExpanded = true;
+    public bool FavoritesExpanded { get => favoritesExpanded; set => Set(ref favoritesExpanded, value); }
+
     // ---- HedgeDoc ----
     private string hedgeDocServer = "";
     public string HedgeDocServer { get => hedgeDocServer; set => Set(ref hedgeDocServer, value); }
@@ -312,6 +345,41 @@ public sealed class AppSettings : INotifyPropertyChanged
         var list = RecentFiles.Where(p => !string.Equals(p, path, PathIdentity.Comparison)).ToList();
         list.Insert(0, path);
         RecentFiles = list.Take(15).ToList();
+    }
+
+    public void AddRecentFolder(string path)
+    {
+        var list = RecentFolders.Where(p => !string.Equals(p, path, PathIdentity.Comparison)).ToList();
+        list.Insert(0, path);
+        RecentFolders = list.Take(15).ToList();
+    }
+
+    public bool IsFavorite(string path) => FavoritePaths.Any(p => string.Equals(p, path, PathIdentity.Comparison));
+
+    public void ToggleFavorite(string path)
+    {
+        if (IsFavorite(path)) FavoritePaths = FavoritePaths.Where(p => !string.Equals(p, path, PathIdentity.Comparison)).ToList();
+        else FavoritePaths = FavoritePaths.Append(path).ToList();
+    }
+
+    public void RemapNavigationPaths(string oldPath, string? newPath, bool folder)
+    {
+        var prefix = oldPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        string? Remap(string path)
+        {
+            if (string.Equals(path, oldPath, PathIdentity.Comparison)) return newPath;
+            if (folder && path.StartsWith(prefix, PathIdentity.Comparison) && newPath != null)
+                return newPath + path[oldPath.Length..];
+            if (folder && path.StartsWith(prefix, PathIdentity.Comparison)) return null;
+            return path;
+        }
+        List<string> Update(List<string> paths) => paths.Select(Remap).Where(path => path != null)
+            .Select(path => path!).Distinct(PathIdentity.Comparer).ToList();
+        FavoritePaths = Update(FavoritePaths);
+        RecentFiles = Update(RecentFiles);
+        RecentFolders = Update(RecentFolders);
+        if (LastFolder != null) LastFolder = Remap(LastFolder);
+        if (StartupFolder != null) StartupFolder = Remap(StartupFolder);
     }
 
     /// <summary>The camelCase option object the editor expects in GetSettings.</summary>

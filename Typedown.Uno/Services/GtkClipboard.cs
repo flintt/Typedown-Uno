@@ -43,28 +43,50 @@ public static class GtkClipboard
     private delegate void TargetsReceived(IntPtr clipboard, IntPtr atoms, int count, IntPtr userData);
     private delegate void ContentsReceived(IntPtr clipboard, IntPtr selectionData, IntPtr userData);
 
-    private const uint HtmlTarget = 1, TextTarget = 2;
+    private const uint HtmlTarget = 1, TextTarget = 2, PngTarget = 3, MathMlTarget = 4;
 
     // Called from GTK for as long as the clipboard is ours: the delegates and the content have to outlive the call.
     private static readonly GetFunc get = OnGet;
     private static readonly ClearFunc clear = (_, _) => { };
-    private static GSourceFunc? pending;
+    private static readonly List<GSourceFunc> pendingSources = new();
     private static string text = "";
     private static string? html;
+    private static byte[]? png;
+    private static string? mathml;
 
     public static bool IsAvailable => OperatingSystem.IsLinux();
 
+    private static void Schedule(GSourceFunc action)
+    {
+        GSourceFunc? callback = null;
+        callback = data =>
+        {
+            try { return action(data); }
+            finally { lock (pendingSources) pendingSources.Remove(callback!); }
+        };
+        lock (pendingSources) pendingSources.Add(callback);
+        g_idle_add(callback, IntPtr.Zero);
+    }
+
     /// <summary>Puts the copy on the clipboard: its text, and its HTML when there is any.</summary>
     public static void SetTextAndHtml(string newText, string? newHtml)
+        => SetRich(newText, newHtml, null);
+
+    /// <summary>Offers Markdown text and a rendered block as one clipboard item.</summary>
+    public static void SetRich(string newText, string? newHtml, byte[]? newPng, string? newMathMl = null)
     {
-        pending = _ =>
+        Schedule(_ =>
         {
             try
             {
                 text = newText;
                 html = string.IsNullOrEmpty(newHtml) ? null : newHtml;
+                png = newPng is { Length: > 0 } ? newPng : null;
+                mathml = MathMlClipboard.ToWordFormat(newMathMl);
                 var list = gtk_target_list_new(IntPtr.Zero, 0);
                 if (html != null) gtk_target_list_add(list, gdk_atom_intern("text/html", false), 0, HtmlTarget);
+                if (png != null) gtk_target_list_add(list, gdk_atom_intern("image/png", false), 0, PngTarget);
+                if (mathml != null) gtk_target_list_add(list, gdk_atom_intern("application/mathml+xml", false), 0, MathMlTarget);
                 gtk_target_list_add_text_targets(list, TextTarget);
                 var table = gtk_target_table_new_from_list(list, out var count);
                 var clipboard = gtk_clipboard_get(gdk_atom_intern("CLIPBOARD", false));
@@ -78,8 +100,7 @@ public static class GtkClipboard
                 Log.Error("gtk clipboard", ex);
             }
             return false; // once
-        };
-        g_idle_add(pending, IntPtr.Zero);
+        });
     }
 
     // The picture types a paste takes, in the order it prefers them.
@@ -127,13 +148,12 @@ public static class GtkClipboard
             }
             catch (Exception ex) { Log.Error("gtk clipboard (targets)", ex); done.TrySetResult(null); }
         };
-        pending = _ =>
+        Schedule(_ =>
         {
             try { gtk_clipboard_request_targets(gtk_clipboard_get(gdk_atom_intern("CLIPBOARD", false)), targetsReceived, IntPtr.Zero); }
             catch (Exception ex) { Log.Error("gtk clipboard (request)", ex); done.TrySetResult(null); }
             return false;
-        };
-        g_idle_add(pending, IntPtr.Zero);
+        });
         var finished = await Task.WhenAny(done.Task, Task.Delay(5000));
         return finished == done.Task ? done.Task.Result : null;
     }
@@ -148,10 +168,33 @@ public static class GtkClipboard
                 var bytes = Encoding.UTF8.GetBytes("<meta http-equiv=\"content-type\" content=\"text/html; charset=utf-8\">" + html);
                 gtk_selection_data_set(selectionData, gtk_selection_data_get_target(selectionData), 8, bytes, bytes.Length);
             }
+            else if (info == PngTarget && png != null)
+            {
+                gtk_selection_data_set(selectionData, gtk_selection_data_get_target(selectionData), 8, png, png.Length);
+            }
+            else if (info == MathMlTarget && mathml != null)
+            {
+                var bytes = Encoding.UTF8.GetBytes(mathml);
+                gtk_selection_data_set(selectionData, gtk_selection_data_get_target(selectionData), 8, bytes, bytes.Length);
+            }
             else
             {
                 var bytes = Encoding.UTF8.GetBytes(text);
-                gtk_selection_data_set_text(selectionData, bytes, bytes.Length);
+                var target = gtk_selection_data_get_target(selectionData);
+                var namePointer = gdk_atom_name(target);
+                string? name = null;
+                if (namePointer != IntPtr.Zero)
+                {
+                    name = Marshal.PtrToStringUTF8(namePointer);
+                    g_free(namePointer);
+                }
+                // GTK's set_text encodes the unspecified-charset text/plain target as ASCII with literal
+                // \uXXXX escapes. Offer UTF-8 bytes for the MIME text targets; keep GTK's conversion for the
+                // X11 STRING/COMPOUND_TEXT atoms that require their own encoding.
+                if (name != null && name.StartsWith("text/plain", StringComparison.OrdinalIgnoreCase))
+                    gtk_selection_data_set(selectionData, target, 8, bytes, bytes.Length);
+                else
+                    gtk_selection_data_set_text(selectionData, bytes, bytes.Length);
             }
         }
         catch (Exception ex)

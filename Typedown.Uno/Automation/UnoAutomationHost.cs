@@ -119,7 +119,18 @@ public sealed class UnoAutomationHost : IAutomationHost, IViewHost
             if (latest && active && !(await w.Document.WaitForLoadAsync(UnoAutomationDocument.ReloadTimeoutMs) && await w.Document.FlushContentAsync(UnoAutomationDocument.FlushTimeoutMs)))
                 throw SyncTimeout();
             if (!w.Tabs.Tabs.Contains(tab)) throw DocumentNotFound(documentId);
-            var text = active ? w.Document.Markdown : tab.Markdown ?? "";
+            string text;
+            if (active) text = w.Document.Markdown;
+            else if (tab.IsDeferred && tab.FilePath is { } path)
+            {
+                // Session tabs are created before their files are read. An automation read still needs the real
+                // content; leave the tab deferred so its first UI activation can check for a crash backup.
+                var (diskText, format) = await TextFileFormat.ReadAsync(path);
+                tab.FileFormat = format;
+                text = diskText;
+            }
+            else if (tab.IsDeferred) text = AutoBackup.Read(null, tab.DocumentId) ?? DocumentViewModel.DefaultMarkdown;
+            else text = tab.Markdown;
             var hash = DocumentText.ContentHash(text);
             var normalization = NormalizationInfo.NotEvaluated(hash, EditorClassifierVersion);
             if (active && w.IsActive(tab) && await w.Document.QueryNormalizationAsync(QueryTimeoutMs) is { } report
@@ -207,8 +218,14 @@ public sealed class UnoAutomationHost : IAutomationHost, IViewHost
 
     public async Task<EditResult> EditDocumentAsync(string documentId, EditRequest request, Reveal reveal, CancellationToken cancellationToken)
     {
-        if (reveal == Reveal.Document) await FocusDocumentAsync(documentId, cancellationToken);
         var (window, tab) = await Find(documentId);
+        // A session tab has no text snapshot until first activation. Load it through the normal tab path before an
+        // automation edit, including the crash-recovery decision, or an edit would run against an empty placeholder.
+        if (reveal == Reveal.Document || tab.IsDeferred)
+        {
+            await FocusDocumentAsync(documentId, cancellationToken);
+            (window, tab) = await Find(documentId);
+        }
         return await OnWindow(window.WindowId, w => coordinator.EditAsync(new UnoAutomationDocument(w, tab), request, cancellationToken));
     }
 

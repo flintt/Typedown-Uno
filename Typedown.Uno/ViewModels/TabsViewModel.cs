@@ -11,6 +11,8 @@ public sealed class TabsViewModel : INotifyPropertyChanged
     private readonly DocumentViewModel document;
     private readonly AppSettings settings;
     private bool switching;
+    private bool transitionPending;
+    public bool RestoringSession { get; private set; }
 
     public ObservableCollection<DocumentTab> Tabs { get; } = new();
 
@@ -49,11 +51,12 @@ public sealed class TabsViewModel : INotifyPropertyChanged
     /// <summary>Opens a file: an already open one becomes active; otherwise it gets a tab (reusing a blank or preview tab).</summary>
     public async Task<bool> OpenFileAsync(string path, bool preview = false)
     {
+        if (RestoringSession || transitionPending) return false;
         if (FindByPath(path) is { } existing)
         {
             await SwitchToAsync(existing);
             if (!preview) existing.IsPreview = false;
-            return true;
+            return existing == ActiveTab;
         }
         // "Open files in a new tab" off: an open replaces the current document whenever it has nothing to lose.
         var reuse = document.IsBlank || (preview && document.Saved && ActiveTab.IsPreview) || (!settings.OpenFilesInNewTab && document.Saved);
@@ -78,6 +81,7 @@ public sealed class TabsViewModel : INotifyPropertyChanged
 
     public async Task NewTabAsync()
     {
+        if (RestoringSession || transitionPending) return;
         if (document.IsBlank) return;
         BeginNewTab();
         await document.ResetToUntitledAsync(ActiveTab.DocumentId, discardCurrent: false);
@@ -120,32 +124,43 @@ public sealed class TabsViewModel : INotifyPropertyChanged
     public async Task SwitchToAsync(DocumentTab tab)
     {
         if (tab == ActiveTab || !Tabs.Contains(tab)) return;
-        // Bring the outgoing document's latest edits in and let its pending change reports resolve before we
-        // snapshot it and load the next one, or a throttled MarkdownChange for the tab being left can arrive
-        // after the switch and land on the tab now shown — one document's text crossing into another.
-        if (!await document.FlushContentAsync())
+        if (RestoringSession || transitionPending)
         {
-            document.ShowStatus(Loc.Get("EditorNotResponding"));
-            OnPropertyChanged(nameof(ActiveTab)); // reset a TabView selection that already moved visually
+            OnPropertyChanged(nameof(ActiveTab));
             return;
         }
-        // Looked at again after the wait: closing a tab removes it from the strip, the strip selects the neighbour and
-        // asks for it here, and the close then shows that very tab itself - the same document loaded twice, the first
-        // load's reports dropped as stale and the second not reported again: the outline stayed on the closed
-        // document (Typedown 00ff51d, E2E TC02).
-        if (tab == ActiveTab || !Tabs.Contains(tab)) return;
-        switching = true;
+        transitionPending = true;
         try
         {
-            document.Capture(ActiveTab);
-            previousTab = ActiveTab;
-            ActiveTab = tab;
-            await document.Restore(tab);
+            // Bring the outgoing document's latest edits in and let its pending change reports resolve before we
+            // snapshot it and load the next one, or a throttled MarkdownChange for the tab being left can arrive
+            // after the switch and land on the tab now shown — one document's text crossing into another.
+            if (!await document.FlushContentAsync())
+            {
+                document.ShowStatus(Loc.Get("EditorNotResponding"));
+                OnPropertyChanged(nameof(ActiveTab)); // reset a TabView selection that already moved visually
+                return;
+            }
+            // Looked at again after the wait: closing a tab removes it from the strip, the strip selects the neighbour and
+            // asks for it here, and the close then shows that very tab itself - the same document loaded twice, the first
+            // load's reports dropped as stale and the second not reported again: the outline stayed on the closed
+            // document (Typedown 00ff51d, E2E TC02).
+            if (tab == ActiveTab || !Tabs.Contains(tab)) return;
+            switching = true;
+            try
+            {
+                document.Capture(ActiveTab);
+                previousTab = ActiveTab;
+                ActiveTab = tab;
+                if (tab.IsDeferred) await LoadDeferredAsync(tab);
+                else await document.Restore(tab);
+            }
+            finally
+            {
+                switching = false;
+            }
         }
-        finally
-        {
-            switching = false;
-        }
+        finally { transitionPending = false; }
     }
 
     /// <summary>
@@ -169,8 +184,9 @@ public sealed class TabsViewModel : INotifyPropertyChanged
     /// <summary>Closes a tab after the save prompt; closing the last tab leaves an empty untitled document.</summary>
     public async Task<bool> CloseTabAsync(DocumentTab tab)
     {
-        if (!Tabs.Contains(tab)) return false;
+        if (RestoringSession || transitionPending || !Tabs.Contains(tab)) return false;
         if (tab != ActiveTab) await SwitchToAsync(tab);
+        if (tab != ActiveTab) return false;
         if (!await document.AskToSaveAsync()) return false;
         if (Tabs.Count == 1)
         {
@@ -186,7 +202,8 @@ public sealed class TabsViewModel : INotifyPropertyChanged
         try
         {
             ActiveTab = next;
-            await document.Restore(next);
+            if (next.IsDeferred) await LoadDeferredAsync(next);
+            else await document.Restore(next);
         }
         finally
         {
@@ -220,35 +237,54 @@ public sealed class TabsViewModel : INotifyPropertyChanged
         SessionMemory.Save(documents, Math.Max(0, documents.FindIndex(d => d.DocumentId == activeId)), folder);
     }
 
-    /// <summary>Reopens the last session's files as tabs (before the editor is up: content is staged only).</summary>
+    /// <summary>Shows every remembered tab immediately, then reads only the active document.</summary>
     public async Task<string?> RestoreSessionAsync()
     {
         var session = SessionMemory.Load();
         if (session == null || session.Documents.Count == 0) return session?.Folder;
-        var opened = 0;
-        foreach (var entry in session.Documents)
+        // A missing crash backup must not turn into an empty draft tab. Named files have already been filtered
+        // by SessionMemory.Load. Keeping their document IDs preserves each file's own backup on first open.
+        var entries = session.Documents.Where(e => e.FilePath != null || AutoBackup.Exists(null, e.DocumentId)).ToList();
+        if (entries.Count == 0) return session.Folder;
+        var activeId = session.Documents[Math.Clamp(session.ActiveIndex, 0, session.Documents.Count - 1)].DocumentId;
+        var restored = entries.Select(e => new DocumentTab
         {
-            if (opened > 0) BeginNewTab(entry.DocumentId);
-            else document.PrepareNewTab(entry.DocumentId);
-            bool ok;
-            if (entry.FilePath != null)
-            {
-                ok = await document.LoadAsync(entry.FilePath);
-            }
-            else
-            {
-                var backup = AutoBackup.Read(null, entry.DocumentId);
-                await document.ResetToUntitledAsync(entry.DocumentId, discardCurrent: false, recoveredText: backup);
-                ok = true;
-            }
-            if (ok) opened++;
-            else if (opened > 0) AbortNewTab(ActiveTab);
+            DocumentId = e.DocumentId,
+            FilePath = e.FilePath,
+            IsDeferred = true,
+            IsDirty = AutoBackup.Exists(e.FilePath, e.DocumentId),
+        }).ToList();
+        RestoringSession = true;
+        try
+        {
+            ActiveTab = restored.FirstOrDefault(t => t.DocumentId == activeId) ?? restored[0];
+            Tabs.Clear();
+            foreach (var tab in restored) Tabs.Add(tab);
+            await LoadDeferredAsync(ActiveTab);
         }
-        var active = session.ActiveIndex < session.Documents.Count
-            ? Tabs.FirstOrDefault(t => t.DocumentId == session.Documents[session.ActiveIndex].DocumentId)
-            : null;
-        if (active != null && active != ActiveTab) await SwitchToAsync(active);
+        finally
+        {
+            RestoringSession = false;
+            OnPropertyChanged(nameof(ActiveTab));
+        }
         return session.Folder;
+    }
+
+    private async Task LoadDeferredAsync(DocumentTab tab)
+    {
+        document.PrepareNewTab(tab.DocumentId);
+        if (tab.FilePath is { } path && await document.LoadAsync(path))
+        {
+            tab.IsDeferred = false;
+            tab.IsDirty = !document.Saved;
+            return;
+        }
+        // An untitled tab has a crash backup; a named file can disappear after SessionMemory.Load checked it.
+        var backup = tab.FilePath == null ? AutoBackup.Read(null, tab.DocumentId) : null;
+        if (tab.FilePath != null) tab.FilePath = null;
+        await document.ResetToUntitledAsync(tab.DocumentId, discardCurrent: false, recoveredText: backup);
+        tab.IsDeferred = false;
+        tab.IsDirty = !document.Saved;
     }
 
     private void OnPropertyChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
