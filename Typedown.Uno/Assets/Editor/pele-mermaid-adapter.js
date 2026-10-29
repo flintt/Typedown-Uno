@@ -1,10 +1,12 @@
-// Uno experiment: keep the bundled editor's Mermaid API while rendering its Mermaid fences with Pele.
-// The renderer is loaded on the first diagram, as Mermaid was. This file belongs to Uno only; the shared editor
-// source and the Windows editions still use Mermaid.
+// Uno experiment: choose Mermaid or Pele for Mermaid fences without changing the shared editor bundle.
+// Both engines are loaded on demand. The wrapper is stable because the editor caches window.mermaid.
 (function () {
     'use strict';
 
-    var loading = null;
+    var peleLoading = null;
+    var mermaidLoading = null;
+    var mermaidEngine = null;
+    var renderer = 'mermaid';
     var options = { theme: 'default' };
     var nextId = 0;
     var palettes = {
@@ -22,8 +24,8 @@
 
     function loadPele() {
         if (window.pele) return Promise.resolve(window.pele);
-        if (!loading) {
-            loading = new Promise(function (resolve, reject) {
+        if (!peleLoading) {
+            peleLoading = new Promise(function (resolve, reject) {
                 var script = document.createElement('script');
                 script.src = './pele.global.js';
                 script.onload = function () {
@@ -36,11 +38,34 @@
                 };
                 document.head.appendChild(script);
             }).catch(function (error) {
-                loading = null;
+                peleLoading = null;
                 throw error;
             });
         }
-        return loading;
+        return peleLoading;
+    }
+
+    function loadMermaid() {
+        if (mermaidEngine) return Promise.resolve(mermaidEngine);
+        if (!mermaidLoading) {
+            mermaidLoading = new Promise(function (resolve, reject) {
+                var script = document.createElement('script');
+                script.src = './mermaid.min.js';
+                script.onload = function () {
+                    if (mermaidEngine && typeof mermaidEngine.render === 'function') resolve(mermaidEngine);
+                    else reject(new Error('Mermaid script did not expose render()'));
+                };
+                script.onerror = function () {
+                    script.remove();
+                    reject(new Error('Mermaid script could not be loaded'));
+                };
+                document.head.appendChild(script);
+            }).catch(function (error) {
+                mermaidLoading = null;
+                throw error;
+            });
+        }
+        return mermaidLoading;
     }
 
     function renderSvg(pele, source, id, config, target) {
@@ -64,16 +89,27 @@
         return svg.outerHTML;
     }
 
-    window.mermaid = {
+    var wrapper = {
         initialize: function (config) {
             options = Object.assign({}, config || {});
+            if (renderer === 'mermaid' && mermaidEngine) mermaidEngine.initialize(options);
         },
         render: async function (id, source) {
             var config = options;
+            if (renderer === 'mermaid') {
+                var mermaid = await loadMermaid();
+                mermaid.initialize(config);
+                return mermaid.render(id, source);
+            }
             var pele = await loadPele();
             return { svg: renderSvg(pele, source, id || 'pele-' + nextId++, config) };
         },
         run: async function (config) {
+            if (renderer === 'mermaid') {
+                var mermaid = await loadMermaid();
+                mermaid.initialize(options);
+                return mermaid.run(config);
+            }
             var settings = options;
             var nodes = config && config.nodes ? Array.from(config.nodes) : Array.from(document.querySelectorAll('.mermaid'));
             if (!nodes.length) return;
@@ -83,5 +119,29 @@
                 node.innerHTML = renderSvg(pele, source, 'pele-' + nextId++, settings, node);
             }
         }
+    };
+
+    // Mermaid's UMD bundle assigns globalThis.mermaid. Capture the real engine while keeping the editor's
+    // already cached reference to this wrapper, including after a setting change.
+    Object.defineProperty(window, 'mermaid', {
+        configurable: true,
+        enumerable: true,
+        get: function () { return wrapper; },
+        set: function (value) { if (value !== wrapper) mermaidEngine = value; }
+    });
+
+    window.__unoSetMermaidRenderer = function (value) {
+        var next = value === 'pele' ? 'pele' : 'mermaid';
+        if (next === renderer) return;
+        renderer = next;
+        var muya = window.__typedownMuya;
+        var state = muya && muya.contentState;
+        if (!state || !state.stateRender) return;
+        // The editor caches SVGs by theme and source, so changing engines must clear those caches and redraw.
+        var render = state.stateRender;
+        render.mermaidRenderCache.clear();
+        render.mermaidRenderTargets = new WeakMap();
+        render.mermaidRenderRequests = new WeakMap();
+        state.render(true, true);
     };
 })();

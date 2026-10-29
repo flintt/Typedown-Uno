@@ -22,7 +22,7 @@ const preload = `(() => {
   const deliver = value => listeners.forEach(fn => fn({ data: JSON.stringify(value) }));
   const answers = {
     GetSettings: { markdown: '# Blocks\\n\\n| Name | Value |\\n| --- | --- |\\n| Alpha | **Bold** |\\n\\n\`\`\`mermaid\\ngraph TD\\nA-->B\\n\`\`\`\\n\\n\`\`\`mermaid\\neventmodeling\\ntimeframe 01 ui CartUI\\ntimeframe 02 command AddItem\\ntimeframe 03 event ItemAdded\\n\`\`\`\\n\\n\`\`\`mermaid\\njourney\\n    title My working day\\n    section Go to work\\n      Make tea: 5: Me\\n\`\`\`\\n', sourceCode: false, readOnly: false, fontSize: 16, lineHeight: 1.6,
-      editorAreaWidth: '900px', tabSize: 4, textDirection: 'auto', preferLooseListItem: true,
+      editorAreaWidth: '900px', tabSize: 4, textDirection: 'auto', mermaidRenderer: 'pele', preferLooseListItem: true,
       listIndentation: '1', tableAlignColumns: false, basePath: '/tmp', loadId: 1 },
     GetCurrentTheme: { theme: 'Light', accentColor: { r: 0, g: 120, b: 212, a: 1 },
       background: { R: 249, G: 249, B: 249, A: 1 } },
@@ -41,7 +41,7 @@ const preload = `(() => {
         if (m.name === 'SetClipboard' && m.args.type === 'text/plain') window.__copiedText = m.args.data;
         if (m.name === 'CopiedBlockSource') { value = m.args.id === window.__copyId ? window.__copiedText : ''; window.__copyId = null; }
         if (m.name === 'CopyRichBlock' || m.name === 'CopyBlock') { window.__rich.push(m.args); value = true; }
-        setTimeout(() => deliver({ name: m.id, args: { code: 0, data: value } }), 0);
+        setTimeout(() => window.__unoDeliver(JSON.stringify({ name: m.id, args: { code: 0, data: value } })), 0);
       } else if (m.type === 'diffmsg') {
         const old = previous[m.name] || '';
         previous[m.name] = m.diff ? old.slice(0, m.start) + m.args + old.slice(m.end) : m.args;
@@ -90,7 +90,7 @@ const preload = `(() => {
         if (await run(expression)) return;
         await new Promise(r => setTimeout(r, 100));
       }
-      throw new Error('Timed out: ' + label + ' (' + JSON.stringify(await run('({ invokes:window.__invokes?.slice(-5), copyError:window.__unoRichCopyError, trace:window.__unoRichCopyTrace, copied:window.__copiedText, rich:window.__rich })')) + ')');
+      throw new Error('Timed out: ' + label + ' (' + JSON.stringify(await run('({ invokes:window.__invokes?.slice(-5).map(x => x.name), copyError:window.__unoRichCopyError, trace:window.__unoRichCopyTrace, richCount:window.__rich?.length })')) + ')');
     };
     const contextCopy = async selector => {
       await run(`(() => {
@@ -106,6 +106,8 @@ const preload = `(() => {
     await cdp('Page.addScriptToEvaluateOnNewDocument', { source: preload });
     await cdp('Page.navigate', { url: 'http://127.0.0.1:' + server.address().port + '/index.html' });
     await wait('editor ready', '!!window.__last?.FileLoaded');
+    if (!await run('typeof window.__unoSetMermaidRenderer === "function"'))
+      throw new Error('renderer switch missing');
     await wait('table rendered', '!!document.querySelector("figure[data-role=TABLE] table")');
     await contextCopy('figure[data-role=TABLE] table');
     await wait('rich table copy', 'window.__rich.length === 1');
@@ -138,6 +140,15 @@ const preload = `(() => {
     if (exported.error || exported.pictures !== 3 || exported.svgs !== 0)
       throw new Error('Diagram XHTML is missing pictures: ' + JSON.stringify(exported));
     console.log('PASS three diagram pictures in exported XHTML');
+    if (!await run('document.querySelector(\'figure[data-role="MERMAID"] .ag-container-preview svg\')?.getAttribute("style")?.includes("--pele-bg")'))
+      throw new Error('Pele did not render the starting diagram');
+    await run('window.__mermaidWrapper = window.mermaid; window.__unoDeliver(JSON.stringify({ name: "SettingsChanged", args: { mermaidRenderer: "mermaid" } }))');
+    await wait('Mermaid redraw', '!!window.mermaid && !!document.querySelector(\'script[src$="mermaid.min.js"]\') && !!document.querySelector(\'figure[data-role="MERMAID"] .ag-container-preview svg\') && !document.querySelector(\'figure[data-role="MERMAID"] .ag-container-preview svg\')?.getAttribute("style")?.includes("--pele-bg")');
+    if (!await run('window.mermaid === window.__mermaidWrapper')) throw new Error('renderer wrapper was replaced');
+    console.log('PASS switch to Mermaid redraws the open diagram');
+    await run('window.__unoDeliver(JSON.stringify({ name: "SettingsChanged", args: { mermaidRenderer: "pele" } }))');
+    await wait('Pele redraw', '!!document.querySelector(\'figure[data-role="MERMAID"] .ag-container-preview svg\')?.getAttribute("style")?.includes("--pele-bg")');
+    console.log('PASS switch back to Pele redraws the open diagram');
   } finally {
     if (socket) socket.close();
     if (chrome && chrome.exitCode === null) {

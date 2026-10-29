@@ -15,8 +15,8 @@ DEST=$HERE/Typedown.Uno/Assets/Editor
 cp -a "$FROM/." "$DEST/"
 rm -f "$DEST"/static/js/*.map "$DEST"/static/css/*.map
 
-# The experimental branch keeps the Windows editor bundle but replaces its Mermaid global with the local Pele adapter.
-# The adapter itself loads Pele only on the first diagram. Keep it before both the Uno bridge and the editor bundle.
+# The experimental branch keeps both Mermaid and Pele behind an Uno-only adapter. The adapter loads the
+# selected renderer on demand and must run before both the Uno bridge and the editor bundle.
 python3 - "$DEST/index.html" <<'PY'
 import sys
 p = sys.argv[1]
@@ -34,7 +34,7 @@ if 'uno-bridge.js' not in s:
 open(p, 'w', encoding='utf-8').write(s)
 PY
 
-rm -f "$DEST/lazy-mermaid.js" "$DEST/mermaid.min.js" "$DEST/uno-lazy-mermaid.js"
+rm -f "$DEST/lazy-mermaid.js" "$DEST/uno-lazy-mermaid.js"
 
 # Drop bundles the page no longer references.
 keep=$(grep -o 'main\.[a-f0-9]*\.\(js\|css\)' "$DEST/index.html" | sort -u)

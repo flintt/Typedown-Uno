@@ -137,6 +137,14 @@ public sealed class AppSettings : INotifyPropertyChanged
     private bool renderPlantUml;
     [EditorOption] public bool RenderPlantUml { get => renderPlantUml; set => Set(ref renderPlantUml, value); }
 
+    // Uno experiment: both engines accept Mermaid fences. Keep Mermaid as the default for existing users.
+    private string mermaidRenderer = "mermaid";
+    [EditorOption] public string MermaidRenderer
+    {
+        get => mermaidRenderer;
+        set => Set(ref mermaidRenderer, value == "pele" ? "pele" : "mermaid");
+    }
+
     // The plantuml-server that draws them (an http(s) address); empty or anything else: plantuml.com.
     private string plantUmlServer = "";
     [EditorOption] public string PlantUmlServer { get => plantUmlServer; set => Set(ref plantUmlServer, value ?? ""); }

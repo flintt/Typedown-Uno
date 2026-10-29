@@ -86,6 +86,17 @@
     }
 
     function deliver(data) {
+        // Select the diagram engine before the editor consumes GetSettings or SettingsChanged. The renderer
+        // wrapper stays stable, so the bundled editor can keep its cached Mermaid API reference.
+        if (window.__unoSetMermaidRenderer) {
+            try {
+                var message = JSON.parse(data);
+                var renderer = message && message.name === 'SettingsChanged'
+                    ? message.args && message.args.mermaidRenderer
+                    : message && message.args && message.args.data && message.args.data.mermaidRenderer;
+                if (renderer) window.__unoSetMermaidRenderer(renderer);
+            } catch (e) { console.error('diagram renderer setting', e); }
+        }
         if (native && typeof native.dispatchEvent === 'function') {
             native.dispatchEvent(new MessageEvent('message', { data: data }));
             return;

@@ -54,6 +54,7 @@ public static partial class LocaleTables
         ["InsertAfter"] = "在后面插入段落",
         ["Chart"] = "图表",
         ["Mermaid"] = "Mermaid",
+        ["MermaidRenderer"] = "Mermaid 图表渲染器",
         ["FlowChart"] = "流程图",
         ["Sequence"] = "时序图",
         ["VegaLite"] = "Vega-Lite",

@@ -136,6 +136,8 @@ public sealed partial class SettingsDialog : ContentDialog
         Toggle("AutoPairQuote", settings.AutoPairQuote, v => settings.AutoPairQuote = v);
         Toggle("AutoPairMarkdown", settings.AutoPairMarkdownSyntax, v => settings.AutoPairMarkdownSyntax = v);
         Toggle("VimMode", settings.VimMode, v => settings.VimMode = v, "VimModeDescription");
+        Combo("MermaidRenderer", new[] { "Mermaid", "Pele" }, settings.MermaidRenderer == "pele" ? 1 : 0,
+            i => settings.MermaidRenderer = i == 1 ? "pele" : "mermaid");
         Toggle("RenderPlantUml", settings.RenderPlantUml, v => settings.RenderPlantUml = v, "RenderPlantUmlDescription");
         Text("PlantUmlServer", settings.PlantUmlServer, v => settings.PlantUmlServer = v, hint: "https://www.plantuml.com/plantuml");
         MultilineText("CustomCss", settings.CustomCss, v => settings.CustomCss = v);

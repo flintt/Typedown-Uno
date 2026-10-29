@@ -62,6 +62,7 @@ public static class Loc
         ["LocalAutomation"] = "Allow local automation", ["LocalAutomationDescription"] = "Programs you run on this computer can read and edit open documents. The window title shows when one is connected.", ["HighlightAutomationChanges"] = "Highlight changes made by programs", ["HighlightAutomationChangesDescription"] = "Briefly highlights the text a connected program changed, so you can see what moved.", ["AutomationConnected"] = "Automation connected", ["AutomationWrote"] = "{0} edited {1}", ["TrimCodeBlock"] = "Trim unnecessary empty lines in code blocks",
         ["AutoPairBracket"] = "Auto-pair brackets", ["AutoPairQuote"] = "Auto-pair quotes", ["AutoPairMarkdown"] = "Auto-pair Markdown syntax",
         ["RenderPlantUml"] = "Draw PlantUML diagrams", ["RenderPlantUmlDescription"] = "Sends the diagram's source to plantuml.com, which draws it",
+        ["MermaidRenderer"] = "Mermaid diagram renderer",
         ["PlantUmlServer"] = "PlantUML server",
         ["ImagesInserted"] = "{0} images inserted",
         ["UploadLocalImages"] = "Upload local images",
