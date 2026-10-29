@@ -118,11 +118,10 @@ public sealed partial class DocumentViewModel
         return await Task.WhenAny(waiter.Task, Task.Delay(timeoutMs)) == waiter.Task ? waiter.Task.Result : null;
     }
 
-    private bool CompleteAutomationReload(JsonNode? args)
+    private bool CompleteAutomationReload(JsonNode? args, string text)
     {
         if (automationReload == null || args?["loadId"]?.GetValue<int>() != automationReloadId) return false;
         FileLoaded = true;
-        var text = args?["text"]?.GetValue<string>() ?? "";
         Markdown = text;
         CurrentHash = SafeFile.Hash(text);
         Saved = FileHash == CurrentHash;

@@ -81,6 +81,10 @@ public sealed partial class DocumentViewModel : INotifyPropertyChanged, IDisposa
     public ulong DiskHash { get; private set; }
     public bool FileLoaded { get; private set; }
     public int LoadId { get; private set; }
+    // The page may confirm an unchanged load with { same: true, loadId } instead of sending the entire text back.
+    // Keep the exact text sent for that load: Markdown can change while a report is in flight.
+    private int pendingLoadId = -1;
+    private string? pendingLoadText;
     public JsonNode? Cursor { get; private set; }
     public double? ScrollTop { get; private set; }
     /// <summary>False until the editor page asked for its settings; before that content is only staged for GetSettings.</summary>
@@ -107,17 +111,36 @@ public sealed partial class DocumentViewModel : INotifyPropertyChanged, IDisposa
         return id != null && id.GetValueKind() == System.Text.Json.JsonValueKind.Number && id.GetValue<int>() != LoadId;
     }
 
+    private bool TryReadLoadedText(JsonNode? args, out string text)
+    {
+        if (args?["text"] is JsonValue value && value.TryGetValue<string>(out var reported))
+        {
+            text = reported;
+            return true;
+        }
+        if (args?["same"] is JsonValue same && same.TryGetValue<bool>(out var unchanged) && unchanged
+            && args?["loadId"] is JsonValue id && id.TryGetValue<int>(out var reportedId)
+            && reportedId == LoadId && pendingLoadId == reportedId && pendingLoadText != null)
+        {
+            text = pendingLoadText;
+            return true;
+        }
+        text = "";
+        Services.Log.Write($"ignored FileLoaded without text for load {LoadId}");
+        return false;
+    }
+
     private void OnEditorMessage(string name, JsonNode? args)
     {
         switch (name)
         {
             case "FileLoaded":
                 if (IsStale(args)) return;
+                if (!TryReadLoadedText(args, out var text)) return;
                 ConfirmedLoadId = LoadId;
                 if (FileLoaded) return;
-                if (CompleteAutomationReload(args)) return;
+                if (CompleteAutomationReload(args, text)) return;
                 FileLoaded = true;
-                var text = args?["text"]?.GetValue<string>() ?? "";
                 // The page hands back the source it was given; anything else is a real change (document-identity.json).
                 if (text != Markdown) Revision++;
                 var loadedHash = SafeFile.Hash(text);
@@ -276,20 +299,22 @@ public sealed partial class DocumentViewModel : INotifyPropertyChanged, IDisposa
     // untitled document). If accepted, the backup is loaded and left unsaved against the on-disk baseline.
     private async Task MaybeRecoverActiveAsync()
     {
+        var documentId = DocumentId;
         var path = FilePath;
-        var backup = AutoBackup.Read(path, DocumentId);
+        var backup = AutoBackup.Read(path, documentId);
         if (backup == null) return;
         var backupHash = SafeFile.Hash(backup);
-        if (backupHash == FileHash) { AutoBackup.Delete(path, DocumentId); return; } // backup matches the saved content
+        if (backupHash == FileHash) { AutoBackup.Delete(path, documentId); return; } // backup matches the saved content
         if (path == null && backupHash == SafeFile.Hash(DefaultMarkdown)) return; // nothing worth recovering
         if (await ui.ConfirmAsync(Loc.Get("RecoverTitle"), Loc.Get("RecoverContent"), Loc.Get("Restore"), Loc.Get("Delete")))
         {
+            if (DocumentId != documentId) return; // the reader switched tabs while the question was open
             recoveredDiskHash = FileHash;
             await PostLoadFile(backup);
         }
         else
         {
-            AutoBackup.Delete(path, DocumentId);
+            if (DocumentId == documentId) AutoBackup.Delete(path, documentId);
         }
     }
 
@@ -299,13 +324,15 @@ public sealed partial class DocumentViewModel : INotifyPropertyChanged, IDisposa
     {
         FileLoaded = false;
         if (!EditorReady) return Task.CompletedTask; // the initial GetSettings reply carries the document
+        pendingLoadId = ++LoadId;
+        pendingLoadText = text;
         return transport.PostMessage("LoadFile", new
         {
             text,
             basePath = BasePath,
             cursor = cursor ?? (settings.RememberPosition ? CursorMemory.GetCursor(FilePath) : null),
             scrollTop = scrollTop ?? (settings.RememberPosition ? CursorMemory.GetScroll(FilePath) : null),
-            loadId = ++LoadId,
+            loadId = pendingLoadId,
         });
     }
 
@@ -315,13 +342,15 @@ public sealed partial class DocumentViewModel : INotifyPropertyChanged, IDisposa
     public object GetLoadPayload()
     {
         FileLoaded = false;
+        pendingLoadId = ++LoadId;
+        pendingLoadText = Markdown;
         return new
         {
             markdown = Markdown,
             basePath = BasePath,
             cursor = settings.RememberPosition ? CursorMemory.GetCursor(FilePath) : null,
             scrollTop = settings.RememberPosition ? CursorMemory.GetScroll(FilePath) : null,
-            loadId = ++LoadId,
+            loadId = pendingLoadId,
         };
     }
 

@@ -18,8 +18,9 @@
     </DataTemplate>
     <DataTemplate x:Key="SearchResultTemplate" x:DataType="vm:SearchResultItem">
       <StackPanel Padding="0,4" Spacing="2">
+        <TextBlock Text="{x:Bind GroupHeading}" Visibility="{x:Bind GroupHeaderVisibility}" FontWeight="SemiBold" Margin="0,8,0,4"/>
         <TextBlock Text="{x:Bind RelativePath}" FontSize="12" Opacity="0.7" TextTrimming="CharacterEllipsis"/>
-        <TextBlock Text="{x:Bind Snippet}" TextTrimming="CharacterEllipsis"/>
+        <TextBlock Text="{x:Bind DisplaySnippet, Mode=OneWay}" TextTrimming="CharacterEllipsis"/>
       </StackPanel>
     </DataTemplate>
   </Page.Resources>
@@ -63,7 +64,14 @@
               <RowDefinition Height="*"/>
               <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
-            <TextBlock x:Name="SidePaneTitle" Margin="12,6,12,4" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+            <Grid x:Name="FolderHeader" Grid.Row="0" Padding="12,2,8,2" ColumnSpacing="4">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <Button x:Name="FolderUpButton" Width="28" Height="28" Content="↑" FontSize="17" Click="OnFolderUpClick" Background="Transparent" BorderThickness="0" IsEnabled="False"/>
+              <TextBlock x:Name="SidePaneTitle" Grid.Column="1" VerticalAlignment="Center" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+            </Grid>
             <Grid Grid.Row="1">
               <TreeView x:Name="FileTree" ItemTemplate="{StaticResource FolderItemTemplate}" SelectionMode="Single" CanDragItems="False" CanReorderItems="False"
                         ItemInvoked="OnFileTreeItemInvoked" DoubleTapped="OnFileTreeDoubleTapped" RightTapped="OnFileTreeRightTapped"/>

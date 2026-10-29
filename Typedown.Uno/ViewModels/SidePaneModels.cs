@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Nodes;
+using Typedown.Uno.Services;
 
 namespace Typedown.Uno.ViewModels;
 
@@ -86,63 +87,114 @@ public sealed class OutlineItem
     }
 }
 
-public sealed class SearchResultItem
+public enum SearchMatchKind { Name, Content, AlsoContent }
+
+public sealed class SearchResultItem : INotifyPropertyChanged
 {
+    public event PropertyChangedEventHandler? PropertyChanged;
     public string FullPath { get; init; } = "";
     public string FileName => Path.GetFileName(FullPath);
     public string RelativePath { get; init; } = "";
+    public SearchMatchKind Kind { get; init; }
+    public bool IsFolder { get; init; }
+    public string GroupHeading { get; init; } = "";
+    public Microsoft.UI.Xaml.Visibility GroupHeaderVisibility => GroupHeading.Length == 0 ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
     public string Snippet { get; init; } = "";
+    private string? alsoContentSnippet;
+    public bool ContentMatched => Kind == SearchMatchKind.Content || alsoContentSnippet != null;
+    public string DisplaySnippet => Kind == SearchMatchKind.Name
+        ? alsoContentSnippet == null ? Loc.Get(IsFolder ? "FolderName" : "FileName") : Loc.Get("SearchAlsoInContent") + " · " + alsoContentSnippet
+        : Snippet;
+
+    public void MarkAlsoContent(string snippet)
+    {
+        if (alsoContentSnippet != null) return;
+        alsoContentSnippet = snippet;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DisplaySnippet)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ContentMatched)));
+    }
 }
 
 public static class FolderSearch
 {
-    private const int MaxResults = 200;
-    private const long MaxFileBytes = 4 * 1024 * 1024;
+    private const int NameCap = 100;
+    private const int ContentCap = 200;
+    private const long MaxFileBytes = 8 * 1024 * 1024;
 
-    /// <summary>Case-insensitive substring search over the Markdown files of a folder (content and file names).</summary>
+    /// <summary>Names first (including folders), then file contents. A file matching both is one name row.</summary>
     public static (int files, int hits) Run(string root, string query, Action<SearchResultItem> report, CancellationToken token)
     {
-        int files = 0, hits = 0;
-        var pending = new Stack<string>();
-        pending.Push(root);
-        while (pending.Count > 0 && hits < MaxResults)
+        var namedFiles = new HashSet<string>(StringComparer.Ordinal);
+        var toRead = new List<string>();
+        var pending = new Queue<string>();
+        pending.Enqueue(root);
+        var names = 0;
+        while (pending.Count > 0)
         {
             token.ThrowIfCancellationRequested();
-            var folder = pending.Pop();
+            var folder = pending.Dequeue();
             IEnumerable<FileSystemInfo> entries;
-            try { entries = new DirectoryInfo(folder).EnumerateFileSystemInfos(); } catch { continue; }
+            try { entries = new DirectoryInfo(folder).EnumerateFileSystemInfos().OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase).ToList(); }
+            catch { continue; }
             foreach (var entry in entries)
             {
                 token.ThrowIfCancellationRequested();
-                if (entry.Attributes.HasFlag(System.IO.FileAttributes.Hidden)) continue;
-                if (entry is DirectoryInfo)
+                if ((entry.Attributes & (System.IO.FileAttributes.Hidden | System.IO.FileAttributes.System | System.IO.FileAttributes.ReparsePoint)) != 0) continue;
+                var isFolder = entry is DirectoryInfo;
+                if (isFolder)
                 {
-                    if (!entry.Name.StartsWith('.') && entry.Name != "node_modules") pending.Push(entry.FullName);
-                    continue;
+                    if (entry.Name.StartsWith('.') || entry.Name == "node_modules") continue;
+                    pending.Enqueue(entry.FullName);
                 }
-                if (!FolderItem.MarkdownExtensions.Contains(entry.Extension) || ((FileInfo)entry).Length > MaxFileBytes) continue;
-                files++;
-                string? snippet = null;
-                try
+                else
                 {
-                    foreach (var line in File.ReadLines(entry.FullName))
-                    {
-                        var index = line.IndexOf(query, StringComparison.OrdinalIgnoreCase);
-                        if (index < 0) continue;
-                        var start = Math.Max(0, index - 40);
-                        snippet = (start > 0 ? "…" : "") + line.Substring(start, Math.Min(line.Length - start, 120)).Trim();
-                        break;
-                    }
+                    if (!FolderItem.MarkdownExtensions.Contains(entry.Extension)) continue;
+                    try { if (((FileInfo)entry).Length <= MaxFileBytes) toRead.Add(entry.FullName); }
+                    catch { }
                 }
-                catch { continue; }
-                if (snippet == null && entry.Name.Contains(query, StringComparison.OrdinalIgnoreCase)) snippet = "(file name)";
-                if (snippet == null) continue;
-                hits++;
-                var relative = entry.FullName.StartsWith(root, StringComparison.OrdinalIgnoreCase) ? entry.FullName[root.Length..].TrimStart('\\', '/') : entry.FullName;
-                report(new SearchResultItem { FullPath = entry.FullName, RelativePath = relative, Snippet = snippet });
-                if (hits >= MaxResults) break;
+                if (names >= NameCap || !entry.Name.Contains(query, StringComparison.OrdinalIgnoreCase)) continue;
+                if (!isFolder) namedFiles.Add(entry.FullName);
+                report(new SearchResultItem { Kind = SearchMatchKind.Name, IsFolder = isFolder, FullPath = entry.FullName,
+                    RelativePath = Relative(root, entry.FullName), GroupHeading = names == 0 ? Loc.Get("SearchNames") : "" });
+                names++;
             }
         }
-        return (files, hits);
+        var contents = 0;
+        var filesRead = 0;
+        foreach (var path in toRead)
+        {
+            if (contents >= ContentCap) break;
+            token.ThrowIfCancellationRequested();
+            filesRead++;
+            string? snippet = null;
+            try
+            {
+                foreach (var line in File.ReadLines(path))
+                {
+                    token.ThrowIfCancellationRequested();
+                    var index = line.IndexOf(query, StringComparison.OrdinalIgnoreCase);
+                    if (index < 0) continue;
+                    var start = Math.Max(0, index - 40);
+                    snippet = (start > 0 ? "…" : "") + line.Substring(start, Math.Min(line.Length - start, 120)).Trim();
+                    break;
+                }
+            }
+            catch (OperationCanceledException) { throw; }
+            catch { continue; }
+            if (snippet == null) continue;
+            if (namedFiles.Contains(path))
+                report(new SearchResultItem { Kind = SearchMatchKind.AlsoContent, FullPath = path, Snippet = snippet });
+            else
+            {
+                report(new SearchResultItem { Kind = SearchMatchKind.Content, FullPath = path, RelativePath = Relative(root, path),
+                    Snippet = snippet, GroupHeading = contents == 0 ? Loc.Get("SearchContents") : "" });
+                contents++;
+            }
+        }
+        return (filesRead, names + contents);
     }
+
+    private static string Relative(string root, string path) =>
+        path.StartsWith(root, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)
+            ? path[root.Length..].TrimStart('\\', '/') : path;
 }

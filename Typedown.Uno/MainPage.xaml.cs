@@ -600,10 +600,33 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         switch (name)
         {
             case "FileLoaded":
-                Services.Log.Write($"editor handshake done ({args?["text"]?.GetValue<string>()?.Length ?? 0} chars)");
+                Services.Log.Write($"editor handshake done ({(args?["same"]?.GetValue<bool>() == true ? "unchanged" : "text returned")})");
                 DispatcherQueue.TryEnqueue(UpdateTitle);
                 break;
+            case "LoadDrawn":
+                // Numeric timings only: the report also carries a scroll anchor that can contain document text.
+                Services.Log.Write($"editor first paint: {args?["firstPaintMs"]} ms, {args?["chars"]} chars, progressive={args?["progressive"]}");
+                break;
+            case "LoadDrawnWhole":
+                Services.Log.Write($"editor fully drawn: {args?["ms"]} ms in {args?["slices"]} slices");
+                break;
+            case "HistoryRequested":
+                // The newer editor delegates Ctrl+Z/Y in both modes to the document's single undo history.
+                // Ignore a request queued just before a tab switch instead of undoing the next document.
+                var historyDocumentId = document?.DocumentId;
+                var redo = args?["redo"]?.GetValue<bool>() == true;
+                DispatcherQueue.TryEnqueue(async () =>
+                {
+                    if (document == null || document.DocumentId != historyDocumentId || !document.FileLoaded || settings.ReadOnly) return;
+                    if (redo) await document.RedoAsync();
+                    else await document.UndoAsync();
+                });
+                break;
             case "StateChange":
+                // The editor sends the outline once per load, then omits it on ordinary keystrokes.
+                // A late report from the previous tab must not replace the visible tab's outline or word count.
+                if (args?["loadId"] is JsonValue stateLoad && stateLoad.TryGetValue<int>(out var stateLoadId)
+                    && stateLoadId != document?.LoadId) break;
                 // Fires on every keystroke: only touch the UI for what is actually visible, and never rebuild the
                 // outline for an unchanged table of contents (rebuilding a ListView per keystroke is expensive).
                 var state = args?["state"];
@@ -624,7 +647,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                     }
                 }
                 // Keep the last table of contents so switching to the outline shows it without waiting for an edit.
-                latestToc = state?["toc"];
+                if (args?["tocUnchanged"]?.GetValue<bool>() != true) latestToc = state?["toc"];
                 if (settings.SidePaneOpen && settings.SidePanePage == 1 && !searchOpen)
                 {
                     var tocJson = latestToc?.ToJsonString();
@@ -640,7 +663,8 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                 // The editor reports the heading the reader is at as the page scrolls (both edit and reading
                 // mode). Mark it in the outline and keep that row in view. A slug from a stale load, or one not
                 // in the current table of contents, simply finds no match and is ignored.
-                if (args?["loadId"] == null) break;
+                if (args?["loadId"] is not JsonValue outlineLoad || !outlineLoad.TryGetValue<int>(out var outlineLoadId)
+                    || outlineLoadId != document?.LoadId) break;
                 var curSlug = args?["slug"]?.GetValue<string>();
                 DispatcherQueue.TryEnqueue(() => { currentOutlineSlug = curSlug; MarkOutlineCurrent(); });
                 break;
@@ -992,6 +1016,8 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     // ---- menus ------------------------------------------------------------------------------------------------------
 
     private MenuFlyoutSubItem? recentMenu;
+    private MenuFlyoutSubItem? recentFolderMenu;
+    private MenuFlyoutSubItem? favoritesMenu;
 
     private readonly List<System.ComponentModel.PropertyChangedEventHandler> menuToggleHandlers = new();
 
@@ -1137,6 +1163,12 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         recentMenu = new MenuFlyoutSubItem { Text = Loc.Get("Recent") };
         file.Items.Add(recentMenu);
         FillRecent();
+        recentFolderMenu = new MenuFlyoutSubItem { Text = Loc.Get("RecentFolders") };
+        file.Items.Add(recentFolderMenu);
+        FillRecentFolders();
+        favoritesMenu = new MenuFlyoutSubItem { Text = Loc.Get("Favorites") };
+        file.Items.Add(favoritesMenu);
+        FillFavorites();
         file.Items.Add(new MenuFlyoutSeparator());
         file.Items.Add(Item("Save", async () => { if (document != null) await document.SaveAsync(); }, ShortcutCommand.Save));
         file.Items.Add(Item("SaveAs", async () => { if (document != null) await document.SaveAsAsync(); }, ShortcutCommand.SaveAs));
@@ -1387,6 +1419,49 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         recentMenu.Items.Add(Item("ClearRecent", () => settings.RecentFiles = new()));
     }
 
+    private void FillRecentFolders()
+    {
+        if (recentFolderMenu == null) return;
+        recentFolderMenu.Items.Clear();
+        if (settings.RecentFolders.Count == 0)
+        {
+            recentFolderMenu.Items.Add(new MenuFlyoutItem { Text = Loc.Get("NoRecent"), IsEnabled = false });
+            return;
+        }
+        foreach (var path in settings.RecentFolders)
+        {
+            var p = path;
+            recentFolderMenu.Items.Add(new MenuFlyoutItem { Text = p, IsEnabled = Directory.Exists(p) }
+                .OnClick(() => { SetWorkFolder(p, explicitChoice: true); settings.SidePaneOpen = true; settings.SidePanePage = 0; ApplySidePane(); }));
+        }
+        recentFolderMenu.Items.Add(new MenuFlyoutSeparator());
+        recentFolderMenu.Items.Add(Item("ClearRecent", () => settings.RecentFolders = new()));
+    }
+
+    private void FillFavorites()
+    {
+        if (favoritesMenu == null) return;
+        favoritesMenu.Items.Clear();
+        if (settings.FavoritePaths.Count == 0)
+        {
+            favoritesMenu.Items.Add(new MenuFlyoutItem { Text = Loc.Get("NoRecent"), IsEnabled = false });
+            return;
+        }
+        foreach (var path in settings.FavoritePaths)
+        {
+            var p = path;
+            var isFolder = Directory.Exists(p);
+            var exists = isFolder || File.Exists(p);
+            favoritesMenu.Items.Add(new MenuFlyoutItem { Text = p, IsEnabled = exists }.OnClick(async () =>
+            {
+                if (isFolder) { SetWorkFolder(p, explicitChoice: true); settings.SidePaneOpen = true; settings.SidePanePage = 0; ApplySidePane(); }
+                else if (tabs != null) await tabs.OpenFileAsync(p);
+            }));
+        }
+        favoritesMenu.Items.Add(new MenuFlyoutSeparator());
+        favoritesMenu.Items.Add(Item("ClearFavorites", () => settings.FavoritePaths = new()));
+    }
+
     /// <summary>
     /// Alt+1..9 for the tabs. They are not bindings the user can change, so they are added straight to the
     /// window rather than hung off a menu entry; the editor forwards the same keys when it has the focus.
@@ -1482,14 +1557,23 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
 
     private void SetWorkFolder(string folder, bool explicitChoice = false)
     {
+        folder = Path.GetFullPath(folder);
         workFolder = folder;
         folderIsExplicit = explicitChoice || folderIsExplicit;
         settings.LastFolder = folder;
+        if (explicitChoice) settings.AddRecentFolder(folder);
         folderRoot = new FolderItem(folder, true);
         folderRoot.EnsureChildren();
         FileTree.ItemsSource = folderRoot.Children;
-        SidePaneTitle.Text = Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar));
+        SidePaneTitle.Text = Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar)) is { Length: > 0 } name ? name : folder;
+        FolderUpButton.IsEnabled = Directory.GetParent(folder) != null;
         SidePaneStatus.Text = folderRoot.Children.Count == 0 ? Loc.Get("NoResults") : "";
+    }
+
+    private void OnFolderUpClick(object sender, RoutedEventArgs e)
+    {
+        if (workFolder != null && Directory.GetParent(workFolder) is { } parent)
+            SetWorkFolder(parent.FullName, explicitChoice: true);
     }
 
     private void OnFileOpened(string path)
@@ -1547,6 +1631,9 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             Add("Open", async () => { if (tabs != null) await tabs.OpenFileAsync(target.FullPath); });
             Add("OpenInNewWindow", () => NewWindow(target.FullPath));
         }
+        else if (item != null)
+            Add("OpenAsRoot", () => SetWorkFolder(target.FullPath, explicitChoice: true));
+        Add(settings.IsFavorite(target.FullPath) ? "RemoveFavorite" : "AddFavorite", () => settings.ToggleFavorite(target.FullPath));
         Add("NewFileHere", async () => await CreateInFolderAsync(folder, file: true));
         Add("NewFolderHere", async () => await CreateInFolderAsync(folder, file: false));
         menu.Items.Add(new MenuFlyoutSeparator());
@@ -1621,6 +1708,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             var target = Path.Combine(Path.GetDirectoryName(item.FullPath)!, name);
             if (item.IsFolder) Directory.Move(item.FullPath, target);
             else File.Move(item.FullPath, target);
+            settings.RemapNavigationPaths(item.FullPath, target, item.IsFolder);
             // A renamed open document keeps its tab: point it at the new path.
             if (!item.IsFolder && tabs?.FindByPath(item.FullPath) is { } tab) tab.FilePath = target;
             RefreshTree();
@@ -1638,6 +1726,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         {
             if (item.IsFolder) Directory.Delete(item.FullPath, recursive: true);
             else File.Delete(item.FullPath);
+            settings.RemapNavigationPaths(item.FullPath, null, item.IsFolder);
             RefreshTree();
         }
         catch (Exception ex)
@@ -1695,15 +1784,26 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         if (query.Length == 0 || root == null) { SearchResults.ItemsSource = null; SearchStatus.Text = root == null ? Loc.Get("NoFolder") : ""; return; }
         var cts = searchCts = new CancellationTokenSource();
         var results = new System.Collections.ObjectModel.ObservableCollection<SearchResultItem>();
+        var named = new Dictionary<string, SearchResultItem>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
         SearchResults.ItemsSource = results;
         SearchStatus.Text = "…";
         _ = Task.Run(async () =>
         {
-            await Task.Delay(300, cts.Token);
             try
             {
-                var (files, hits) = FolderSearch.Run(root, query, item => DispatcherQueue.TryEnqueue(() => { if (!cts.IsCancellationRequested) results.Add(item); }), cts.Token);
-                DispatcherQueue.TryEnqueue(() => { if (!cts.IsCancellationRequested) SearchStatus.Text = hits == 0 ? Loc.Get("NoResults") : Loc.Format("Results", files, hits); });
+                await Task.Delay(300, cts.Token);
+                var (_, hits) = FolderSearch.Run(root, query, item => DispatcherQueue.TryEnqueue(() =>
+                {
+                    if (cts.IsCancellationRequested) return;
+                    if (item.Kind == SearchMatchKind.AlsoContent)
+                    {
+                        if (named.TryGetValue(item.FullPath, out var original)) original.MarkAlsoContent(item.Snippet);
+                        return;
+                    }
+                    if (item.Kind == SearchMatchKind.Name && !item.IsFolder) named[item.FullPath] = item;
+                    results.Add(item);
+                }), cts.Token);
+                DispatcherQueue.TryEnqueue(() => { if (!cts.IsCancellationRequested) SearchStatus.Text = hits == 0 ? Loc.Get("NoResults") : Loc.Format("SearchHits", hits); });
             }
             catch (OperationCanceledException) { }
         }, cts.Token);
@@ -1712,8 +1812,19 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private async void OnSearchResultClick(object sender, ItemClickEventArgs e)
     {
         if (e.ClickedItem is not SearchResultItem item || tabs == null) return;
+        if (item.IsFolder)
+        {
+            SetWorkFolder(item.FullPath, explicitChoice: true);
+            SearchBox.Text = "";
+            searchOpen = false;
+            ApplySidePane();
+            return;
+        }
         var query = SearchBox.Text.Trim();
-        await tabs.OpenFileAsync(item.FullPath, preview: true);
+        if (!await tabs.OpenFileAsync(item.FullPath, preview: true)) return;
+        editorHadKeyboard = true;
+        Services.WebViewCaret.Focus(EditorView);
+        if (!item.ContentMatched) return;
         await Task.Delay(400);
         ShowFind(true, query);
     }
@@ -1733,6 +1844,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private async void OnTabSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (suppressTabSelection || tabs == null) return;
+        if (tabs.RestoringSession) { UpdateTabBar(); return; }
         if (TabBar.SelectedItem is DocumentTab tab && tab != tabs.ActiveTab) await tabs.SwitchToAsync(tab);
     }
 
@@ -1776,6 +1888,9 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     {
         settings.SidePaneOpen = true;
         searchOpen = true;
+        editorHadKeyboard = false;
+        refocusTicks = 0;
+        Services.WebViewCaret.Release(EditorView, NativeWindow());
         ApplySidePane();
         // Focus only sticks once the panel has been realized and laid out.
         DispatcherQueue.TryEnqueue(async () =>
@@ -1789,6 +1904,8 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     {
         searchOpen = false;
         ApplySidePane();
+        editorHadKeyboard = true;
+        Services.WebViewCaret.Focus(EditorView);
     }
 
     private bool searchOpen;
@@ -1829,7 +1946,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         SideNav.Visibility = searchOpen ? Visibility.Collapsed : Visibility.Visible;
         FileTree.Visibility = page == 0 ? Visibility.Visible : Visibility.Collapsed;
         OutlineList.Visibility = page == 1 ? Visibility.Visible : Visibility.Collapsed;
-        SidePaneTitle.Visibility = page == 0 ? Visibility.Visible : Visibility.Collapsed;
+        FolderHeader.Visibility = page == 0 ? Visibility.Visible : Visibility.Collapsed;
         OpenFolderButton.Visibility = page == 0 ? Visibility.Visible : Visibility.Collapsed;
         if (page == 0 && workFolder == null) SidePaneStatus.Text = Loc.Get("NoFolder");
     }
@@ -2095,6 +2212,8 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                 case nameof(AppSettings.ReadOnly): ApplyReadOnlyBadge(); UpdateTitle(); break;
                 case nameof(AppSettings.WordCountMethod): lastTocJson = null; break;
                 case nameof(AppSettings.RecentFiles): FillRecent(); break;
+                case nameof(AppSettings.RecentFolders): FillRecentFolders(); break;
+                case nameof(AppSettings.FavoritePaths): FillFavorites(); break;
                 case nameof(AppSettings.Language): Loc.Apply(settings.Language); ApplyStrings(); BuildMenus(); UpdateTitle(); _ = PostContextMenuStrings(); break;
                 case nameof(AppSettings.Shortcuts): BuildMenus(); _ = PostShortcutMap(); break;
             }
@@ -2106,6 +2225,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         FilesNavItem.Content = Loc.Get("Files");
         OutlineNavItem.Content = Loc.Get("Outline");
         ToolTipService.SetToolTip(SearchButton, Loc.Get("SearchInFolder"));
+        ToolTipService.SetToolTip(FolderUpButton, Loc.Get("ParentFolder"));
         SearchBox.PlaceholderText = Loc.Get("SearchPlaceholder");
         OpenFolderButton.Content = Loc.Get("OpenFolder");
         ApplyReadOnlyBadge();

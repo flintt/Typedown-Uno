@@ -26,6 +26,9 @@ public sealed class DocumentTab : INotifyPropertyChanged
     /// <summary>Opened by a single click in the file tree: the next single click replaces it instead of adding a tab.</summary>
     public bool IsPreview { get => isPreview; set { if (isPreview == value) return; isPreview = value; OnPropertyChanged(); } }
 
+    /// <summary>A session tab whose path is known but whose file has not yet been read from disk.</summary>
+    public bool IsDeferred { get; set; }
+
     // snapshot of the editor state while the tab is inactive
     public string Markdown { get; set; } = DocumentViewModel.DefaultMarkdown;
     public ulong FileHash { get; set; } = SafeFile.Hash(DocumentViewModel.DefaultMarkdown);

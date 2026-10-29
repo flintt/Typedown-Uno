@@ -126,6 +126,10 @@ public sealed partial class SettingsDialog : ContentDialog
         Toggle("LooseList", settings.PreferLooseListItem, v => settings.PreferLooseListItem = v);
         Toggle("TrimCodeBlock", settings.TrimUnnecessaryCodeBlockEmptyLines, v => settings.TrimUnnecessaryCodeBlockEmptyLines = v);
         Toggle("ParagraphMarker", settings.ShowParagraphMarker, v => settings.ShowParagraphMarker = v);
+        Toggle("ShowBlankLines", settings.ShowBlankLines, v => settings.ShowBlankLines = v);
+        Toggle("ShowMarkdownMarks", settings.ShowMarkdownMarks, v => settings.ShowMarkdownMarks = v);
+        Toggle("ProgressiveRendering", settings.ProgressiveRendering, v => settings.ProgressiveRendering = v, "ProgressiveRenderingDescription");
+        Toggle("PredictHeights", settings.PredictHeights, v => settings.PredictHeights = v, "PredictHeightsDescription");
         Toggle("Spellcheck", settings.SpellcheckEnabled, v => settings.SpellcheckEnabled = v);
         Toggle("AutoPairBracket", settings.AutoPairBracket, v => settings.AutoPairBracket = v);
         Toggle("AutoPairQuote", settings.AutoPairQuote, v => settings.AutoPairQuote = v);
