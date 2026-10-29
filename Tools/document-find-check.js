@@ -100,19 +100,20 @@ const preload = `(() => {
     await deliver('FindDocument', { documentId: 'check' });
     await deliver('ShowFind', { value: 'kiwi', opt: { searchIsCaseSensitive: false, searchIsWholeWord: false, searchIsRegexp: false } });
     await deliver('FindResultsOpen', { open: true });
-    await wait('visual results', 'window.__messages?.some(m => m.name === "DocumentFindResults" && m.args.total === 3)');
-    let results = await evalJs('window.__messages.filter(m => m.name === "DocumentFindResults").at(-1).args');
-    if (results.entries.length !== 3 || !results.entries[1].preview.includes('[kiwi]')) throw new Error('Bad visual previews: ' + JSON.stringify(results));
-    await deliver('FindActivate', { index: 2, query: 'kiwi' });
-    await wait('visual activation', 'window.__typedownMuya?.contentState?.searchMatches?.index === 2');
-    const beforeSource = await evalJs('window.__messages.filter(m => m.name === "DocumentFindResults").length');
+    await wait('visual results', 'window.__messages?.some(m => m.name === "FindResults" && m.args.total === 3)');
+    let results = await evalJs('window.__messages.filter(m => m.name === "FindResults").at(-1).args');
+    if (results.entries.length !== 3 || results.entries[1].text.slice(results.entries[1].start, results.entries[1].end).toLowerCase() !== 'kiwi')
+      throw new Error('Bad visual previews: ' + JSON.stringify(results));
+    await deliver('FindActivate', { index: 2, version: results.version });
+    await wait('visual activation', 'window.__last?.FindState?.index === 2');
+    const beforeSource = await evalJs('window.__messages.filter(m => m.name === "FindResults").length');
     await deliver('SettingsChanged', { sourceCode: true });
     await wait('source editor', '!!document.querySelector(".CodeMirror")');
     await deliver('FindRefresh', null);
-    await wait('source results', 'window.__messages?.filter(m => m.name === "DocumentFindResults").length > ' + beforeSource);
-    results = await evalJs('window.__messages.filter(m => m.name === "DocumentFindResults").at(-1).args');
+    await wait('source results', 'window.__messages?.filter(m => m.name === "FindResults").length > ' + beforeSource);
+    results = await evalJs('window.__messages.filter(m => m.name === "FindResults").at(-1).args');
     if (results.entries.length !== 3) throw new Error('Bad source previews: ' + JSON.stringify(results));
-    await deliver('FindActivate', { index: 1, query: 'kiwi' });
+    await deliver('FindActivate', { index: 1, version: results.version });
     await wait('source activation', '(() => { const cm = document.querySelector(".CodeMirror")?.CodeMirror; if (!cm) return false; const text = cm.getValue(); return cm.getSelection().toLowerCase() === "kiwi" && cm.indexFromPos(cm.getCursor("from")) === text.indexOf("kiwi"); })()');
     console.log('PASS visual and source search previews, count, and result activation');
   } finally {

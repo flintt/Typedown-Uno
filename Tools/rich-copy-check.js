@@ -40,7 +40,7 @@ const preload = `(() => {
         if (m.name === 'BeginRichCopy') { window.__copyId = m.args.id; window.__copiedText = ''; value = true; }
         if (m.name === 'SetClipboard' && m.args.type === 'text/plain') window.__copiedText = m.args.data;
         if (m.name === 'CopiedBlockSource') { value = m.args.id === window.__copyId ? window.__copiedText : ''; window.__copyId = null; }
-        if (m.name === 'CopyRichBlock') { window.__rich.push(m.args); value = true; }
+        if (m.name === 'CopyRichBlock' || m.name === 'CopyBlock') { window.__rich.push(m.args); value = true; }
         setTimeout(() => deliver({ name: m.id, args: { code: 0, data: value } }), 0);
       } else if (m.type === 'diffmsg') {
         const old = previous[m.name] || '';
@@ -114,23 +114,14 @@ const preload = `(() => {
       throw new Error('Incorrect table formats: ' + JSON.stringify(table));
     console.log('PASS table Markdown and HTML');
     await wait('diagram preview', '!!document.querySelector("figure .ag-container-preview svg")');
-    await run(`document.querySelector('figure .ag-container-preview svg').dispatchEvent(
-      new MouseEvent('mouseover', { bubbles: true, cancelable: true }))`);
-    await wait('diagram copy button', `(() => {
-      const button = document.querySelector('#uno-diagram-copy');
-      const codeButton = document.querySelector('figure[data-role="MERMAID"] pre .ag-code-copy');
-      return button && codeButton && button.style.display === 'block' && button.getAttribute('aria-label') === 'Copy content'
-        && button.classList.contains('ag-code-copy') && getComputedStyle(button).width === getComputedStyle(codeButton).width
-        && button.querySelector('svg rect')?.getAttribute('x') === codeButton.querySelector('svg rect')?.getAttribute('x');
-    })()`);
-    await run(`document.querySelector('#uno-diagram-copy').dispatchEvent(
-      new MouseEvent('click', { bubbles: true, cancelable: true }))`);
+    await wait('diagram copy button', `!!document.querySelector('figure[data-role="MERMAID"] .ag-diagram-copy')`);
+    await run(`document.querySelector('figure[data-role="MERMAID"] .ag-diagram-copy').click()`);
     await wait('rich diagram copy', 'window.__rich.length === 2');
-    await wait('diagram copy confirmation', `document.querySelector('#uno-diagram-copy').classList.contains('ag-code-copied')`);
+    await wait('diagram copy confirmation', `document.querySelector('figure[data-role="MERMAID"] .ag-diagram-copy').classList.contains('ag-code-copied')`);
     const diagram = await run('({ text: window.__rich[1].text, html: window.__rich[1].html, pngPrefix: window.__rich[1].png?.slice(0, 24) })');
     if (!diagram.text.includes('```mermaid') || !diagram.pngPrefix?.startsWith('iVBORw0KGgo') || diagram.html)
       throw new Error('Incorrect diagram formats: ' + JSON.stringify(diagram));
-    console.log('PASS diagram hover button, Markdown and PNG');
+    console.log('PASS diagram copy button, Markdown and PNG');
   } finally {
     if (socket) socket.close();
     if (chrome && chrome.exitCode === null) {

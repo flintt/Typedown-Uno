@@ -10,15 +10,11 @@
     <!-- App Identifier -->
     <ApplicationId>uk.mingdan.typedown</ApplicationId>
     <!-- Versions -->
-    <!-- Uno's app manifest requires three parts; the trial package and About box keep the fourth. -->
-    <ApplicationDisplayVersion>1.2.1</ApplicationDisplayVersion>
-    <ApplicationVersion>13</ApplicationVersion>
-    <!-- Uno derives Version from ApplicationDisplayVersion. Pin the assembly values for trial builds;
-         .NET appends SourceRevisionId to InformationalVersion for the About box and log. -->
-    <Version>1.2.1.2</Version>
-    <AssemblyVersion>1.2.1.2</AssemblyVersion>
-    <FileVersion>1.2.1.2</FileVersion>
-    <InformationalVersion>1.2.1.2</InformationalVersion>
+    <ApplicationDisplayVersion>1.2.2</ApplicationDisplayVersion>
+    <ApplicationVersion>9</ApplicationVersion>
+    <!-- Same number in the assembly, so the About box and the log can report it. CI adds the commit
+         through SourceRevisionId, which .NET appends to the informational version. -->
+    <Version>$(ApplicationDisplayVersion)</Version>
     <!-- The Uno SDK leaves these off in Debug, which makes the About box report 0.0.0 while developing. -->
     <GenerateAssemblyVersionAttribute>true</GenerateAssemblyVersionAttribute>
     <GenerateAssemblyFileVersionAttribute>true</GenerateAssemblyFileVersionAttribute>

@@ -34,6 +34,7 @@ python3 Tools/Translations/generate.py --check
 - `focus-after-dialog-check.sh`: After the settings dialog is closed with Escape, the keyboard is the editor's again: a letter typed without a click reaches the document, and Ctrl+, opens the settings again.
 - `image-paste-check.sh`: A picture copied in Chromium ("Copy image": the picture as image/png and an <img> as text/html, no plain text) and pasted with Ctrl+V goes into the document: saved next to it, as Settings > Images says, and linked.
 - `image-upload-check.sh`: File > Upload local images on Linux, with real keys: each local picture goes up once (a command of the person's own here; the S3 path is the Windows edition's code, tested there against a real bucket), every use of it changes to its address, a web image, a missing file and code stay; an undo and a second run take every address from the upload history without calling the command again.
+- `large-document-check.sh`: Three large restored tabs: progressive drawing, tab switching, edits, saves, and external reload.
 - `reading-copy-check.sh`: Reading mode, with real keys and the page's own context menu: Ctrl+Z after an edit changes nothing (the history's undo replaced the text there), Ctrl+A selects the document, Copy puts the Markdown on the clipboard and Copy as plain text the text without it.
 - `recovery-refresh-check.sh`: A dirty restored document writes a crash backup.
 - `reveal-change-check.sh`: reveal: "change" scrolls a change made off screen into view; "document" leaves the page where it was.
