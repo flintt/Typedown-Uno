@@ -82,6 +82,13 @@
         holder.innerHTML = result.svg;
         var svg = holder.firstElementChild;
         if (!svg || svg.localName !== 'svg') throw new Error('Pele returned no SVG');
+        // The editor makes every diagram SVG width: 100%. Mermaid caps that width at its own drawing size,
+        // but Pele's max-width: 100% only caps it at the editor width and can enlarge a small drawing many times.
+        // Keep the drawing's natural size, while allowing it to shrink in a narrower editor.
+        var widthAttribute = svg.getAttribute('width') || '';
+        var numericWidth = /^\s*(\d+(?:\.\d+)?)\s*(?:px)?\s*$/i.exec(widthAttribute);
+        var naturalWidth = numericWidth ? Number(numericWidth[1]) : svg.viewBox.baseVal.width;
+        if (naturalWidth > 0 && Number.isFinite(naturalWidth)) svg.style.maxWidth = naturalWidth + 'px';
         var palette = palettes[config.theme === 'dark' ? 'dark' : 'default'];
         // The export and clipboard clone the SVG into an image. Put literal colors on the SVG itself: inherited page
         // variables disappear there, while Pele's SVG still reads the variables after the clone.

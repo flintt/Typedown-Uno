@@ -116,6 +116,27 @@ const preload = `(() => {
       throw new Error('Incorrect table formats: ' + JSON.stringify(table));
     console.log('PASS table Markdown and HTML');
     await wait('diagram preview', '!!document.querySelector("figure .ag-container-preview svg")');
+    const previewSize = await run(`(() => {
+      const svg = document.querySelector('figure[data-role="MERMAID"] .ag-container-preview svg');
+      const preview = svg.closest('.ag-container-preview');
+      const naturalWidth = Number(svg.getAttribute('width'));
+      const naturalHeight = Number(svg.getAttribute('height'));
+      const normal = svg.getBoundingClientRect();
+      const oldWidth = preview.style.width;
+      preview.style.width = '40px';
+      const narrow = svg.getBoundingClientRect();
+      preview.style.width = oldWidth;
+      return { naturalWidth, naturalHeight, width: normal.width, height: normal.height,
+        narrowWidth: narrow.width, narrowHeight: narrow.height };
+    })()`);
+    const normalRatio = previewSize.height / previewSize.width;
+    const narrowRatio = previewSize.narrowHeight / previewSize.narrowWidth;
+    const intrinsicRatio = previewSize.naturalHeight / previewSize.naturalWidth;
+    if (!(previewSize.naturalWidth > 0 && previewSize.width <= previewSize.naturalWidth + 1 &&
+      previewSize.narrowWidth <= 41 && previewSize.narrowWidth < previewSize.width &&
+      Math.abs(normalRatio - intrinsicRatio) < .05 && Math.abs(narrowRatio - intrinsicRatio) < .05))
+      throw new Error('Pele preview sizing is wrong: ' + JSON.stringify(previewSize));
+    console.log('PASS Pele preview uses natural size and shrinks in narrow space: ' + JSON.stringify(previewSize));
     await wait('diagram copy button', `!!document.querySelector('figure[data-role="MERMAID"] .ag-diagram-copy')`);
     await run(`document.querySelector('figure[data-role="MERMAID"] .ag-diagram-copy').click()`);
     await wait('rich diagram copy', 'window.__rich.length === 2');

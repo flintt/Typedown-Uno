@@ -13,6 +13,14 @@ The adapter gives each SVG a unique ID prefix, disables diagram link clicks as t
 `securityLevel: strict` did, and puts light or dark colors directly on the SVG. Direct colors are needed
 because the editor's XHTML picture export and diagram copy clone the SVG into an image before making a PNG.
 
+The editor stylesheet gives preview SVGs `width: 100%`. Mermaid limits this with an intrinsic `max-width`,
+but Pele previously used only `max-width: 100%`, stretching small diagrams to the whole editor width.
+The adapter now caps Pele SVGs at their numeric `width` (or `viewBox` width), while allowing them to shrink
+with a narrower editor. For `graph TD; A-->B` in an 800 px preview, the displayed size changed from
+800×2000 to its natural 64×160; at 40 px preview width it becomes 40×100. This corrects preview scale,
+not aspect ratio. PDF export was already close to Mermaid's size because its picture path uses the SVG's
+own dimensions. The sizing check also runs in `Tools/rich-copy-check.js` alongside copy and XHTML checks.
+
 ## Checks performed
 
 - The 58 Mermaid fences in the supplied `PELE-samples.md` rendered with Pele 1.12.0 (58/58).
