@@ -62,6 +62,10 @@ public sealed class AppSettings : INotifyPropertyChanged
     private bool alwaysShowTabBar;
     public bool AlwaysShowTabBar { get => alwaysShowTabBar; set => Set(ref alwaysShowTabBar, value); }
 
+    private bool homeOnEmptyTab;
+    /// <summary>Show quick actions and recent paths in an empty, saved tab.</summary>
+    public bool HomeOnEmptyTab { get => homeOnEmptyTab; set => Set(ref homeOnEmptyTab, value); }
+
     // ---- editor (names match the editor's option keys) ----
     private int fontSize = 16;
     [EditorOption] public int FontSize { get => fontSize; set => Set(ref fontSize, value); }

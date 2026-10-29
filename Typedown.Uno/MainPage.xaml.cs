@@ -93,6 +93,10 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private bool documentFindOpen;
     private string? findDocumentId;
     private string documentFindQuery = "";
+    private bool homeVisible;
+    private string? homeDismissedDocumentId;
+    private int homeDismissedLoadId = -1;
+    private int homeVersion;
     private bool closing;
 
     // Local automation: this window as the API sees it, and what its title says about connected programs.
@@ -178,6 +182,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             UpdateTitle();
             // Switching tabs restores a document rather than opening one, so the tree hears about it here.
             if (e.PropertyName == nameof(DocumentViewModel.FilePath)) FollowDocumentFolder(document.FilePath);
+            if (e.PropertyName is nameof(DocumentViewModel.FilePath) or nameof(DocumentViewModel.Saved)) _ = RefreshHomeAsync();
         });
         document.RunOnUi += work => DispatcherQueue.TryEnqueue(async () => await work());
         document.FileOpened += path => DispatcherQueue.TryEnqueue(() => OnFileOpened(path));
@@ -606,7 +611,17 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             case "FileLoaded":
                 Services.Log.Write($"editor handshake done ({(args?["same"]?.GetValue<bool>() == true ? "unchanged" : "text returned")})");
                 DispatcherQueue.TryEnqueue(UpdateTitle);
-                if (documentFindOpen) DispatcherQueue.TryEnqueue(async () => await Post("FindRefresh", null));
+                DispatcherQueue.TryEnqueue(async () =>
+                {
+                    await Post("FindDocument", new { documentId = document?.DocumentId });
+                    await RefreshHomeAsync();
+                    if (documentFindOpen) await Post("FindRefresh", null);
+                });
+                break;
+            case "HomeAction":
+                var homeAction = args?["action"]?.GetValue<string>();
+                var homePath = args?["path"]?.GetValue<string>();
+                DispatcherQueue.TryEnqueue(async () => await HandleHomeActionAsync(homeAction, homePath));
                 break;
             case "DocumentFindToggle":
                 var openFindResults = args?["open"]?.GetValue<bool>() == true;
@@ -1196,7 +1211,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         commandActions.Clear();
         MainMenu.Items.Clear();
         var file = new MenuBarItem { Title = Loc.Get("File") };
-        file.Items.Add(Item("New", async () => { if (tabs != null) await tabs.NewTabAsync(); }, ShortcutCommand.NewTab));
+        file.Items.Add(Item("New", async () => await NewTabOrEditAsync(), ShortcutCommand.NewTab));
         file.Items.Add(Item("NewWindow", () => NewWindow(), ShortcutCommand.NewWindow));
         file.Items.Add(Item("Open", async () => await OpenFileDialogAsync(), ShortcutCommand.Open));
         file.Items.Add(Item("OpenFolder", async () => await OpenFolderDialogAsync(), ShortcutCommand.OpenFolder));
@@ -1544,7 +1559,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
             case ("s", true, true): await document.SaveAsAsync(); break;
             case ("o", true, false): await OpenFileDialogAsync(); break;
             case ("o", true, true): await OpenFolderDialogAsync(); break;
-            case ("n", true, false): await tabs.NewTabAsync(); break;
+            case ("n", true, false): await NewTabOrEditAsync(); break;
             case ("w", true, false): await tabs.CloseTabAsync(tabs.ActiveTab); break;
             case ("p", true, false): await PrintAsync(); break;
             case ("f", true, false): ShowFind(true); break;
@@ -1875,12 +1890,13 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
     private void UpdateTabBar()
     {
         if (tabs == null) return;
+        _ = RefreshHomeAsync();
         if (findDocumentId != document?.DocumentId)
         {
             findDocumentId = document?.DocumentId;
             DocumentFindResults.ItemsSource = null;
             DocumentFindStatus.Text = "";
-            _ = Post("FindDocument", new { documentId = findDocumentId });
+            if (document?.EditorReady == true) _ = Post("FindDocument", new { documentId = findDocumentId });
         }
         TabBar.Visibility = tabs.Tabs.Count > 1 || settings.AlwaysShowTabBar ? Visibility.Visible : Visibility.Collapsed;
         suppressTabSelection = true;
@@ -1903,7 +1919,7 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
 
     private async void OnAddTabClick(TabView sender, object args)
     {
-        if (tabs != null) await tabs.NewTabAsync();
+        await NewTabOrEditAsync();
     }
 
     // ---- find (the bar itself lives in the page: uno-bridge.js) ------------------------------------------------
@@ -1918,6 +1934,82 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
         searchIsWholeWord = settings.FindWholeWord,
         searchIsRegexp = settings.FindRegex,
     };
+
+    // The Home view is drawn inside the editor page so it covers WebKit's native child window on Linux.
+    // A blank saved document still exists behind it; choosing New only dismisses Home for this load.
+    private async Task RefreshHomeAsync()
+    {
+        if (document == null || transport == null || !document.EditorReady) return;
+        var show = settings.HomeOnEmptyTab && document.FileLoaded && document.IsBlank
+            && (homeDismissedDocumentId != document.DocumentId || homeDismissedLoadId != document.LoadId);
+        var wasVisible = homeVisible;
+        homeVisible = show;
+        var version = ++homeVersion;
+        if (show && !wasVisible)
+        {
+            if (documentFindOpen) await SetDocumentFindOpenAsync(false);
+            await Post("HideFind", null);
+        }
+        object Entry(string path) => new
+        {
+            name = Path.GetFileName(Path.TrimEndingDirectorySeparator(path)) is { Length: > 0 } name ? name : path,
+            path,
+            folder = Directory.Exists(path),
+        };
+        await Post("HomeState", new
+        {
+            show,
+            version,
+            strings = new
+            {
+                title = Loc.Get("Home"), newFile = Loc.Get("New"), openFile = Loc.Get("Open"),
+                openFolder = Loc.Get("OpenFolder"), recentFiles = Loc.Get("HomeRecentFiles"),
+                recentFolders = Loc.Get("RecentFolders"), favorites = Loc.Get("Favorites"), empty = Loc.Get("NoRecent"),
+            },
+            recentFiles = settings.RecentFiles.Where(File.Exists).Take(8).Select(Entry).ToArray(),
+            recentFolders = settings.RecentFolders.Where(Directory.Exists).Take(8).Select(Entry).ToArray(),
+            favorites = settings.FavoritePaths.Where(p => File.Exists(p) || Directory.Exists(p)).Take(8).Select(Entry).ToArray(),
+        });
+    }
+
+    private async Task NewTabOrEditAsync()
+    {
+        if (tabs == null || document == null) return;
+        if (homeVisible && document.IsBlank)
+        {
+            homeDismissedDocumentId = document.DocumentId;
+            homeDismissedLoadId = document.LoadId;
+            await RefreshHomeAsync();
+            await Post("TakeKeyboard", null);
+            editorHadKeyboard = true;
+            Services.WebViewCaret.Focus(EditorView);
+            return;
+        }
+        await tabs.NewTabAsync();
+    }
+
+    private async Task HandleHomeActionAsync(string? action, string? path)
+    {
+        if (!homeVisible || tabs == null) return;
+        if (action == "new") { await NewTabOrEditAsync(); return; }
+        if (action == "openFile") { await OpenFileDialogAsync(); return; }
+        if (action == "openFolder") { await OpenFolderDialogAsync(); return; }
+        if (path == null) return;
+        bool Listed(IEnumerable<string> list) => list.Any(p => string.Equals(p, path, PathIdentity.Comparison));
+        if (action == "recentFile" && Listed(settings.RecentFiles) && File.Exists(path)
+            || action == "favorite" && settings.IsFavorite(path) && File.Exists(path))
+        {
+            await tabs.OpenFileAsync(path);
+        }
+        else if (action == "recentFolder" && Listed(settings.RecentFolders) && Directory.Exists(path)
+            || action == "favorite" && settings.IsFavorite(path) && Directory.Exists(path))
+        {
+            SetWorkFolder(path, explicitChoice: true);
+            settings.SidePaneOpen = true;
+            settings.SidePanePage = 0;
+            ApplySidePane();
+        }
+    }
 
     // ---- side pane, theme, settings -----------------------------------------------------------------------------------
 
@@ -2286,13 +2378,14 @@ public sealed partial class MainPage : Page, DocumentViewModel.IHostUi
                     if (settings.SidePaneOpen && settings.SidePanePage == 1) RefreshOutline();
                     break;
                 case nameof(AppSettings.AlwaysShowTabBar): UpdateTabBar(); break;
+                case nameof(AppSettings.HomeOnEmptyTab): _ = RefreshHomeAsync(); break;
                 case nameof(AppSettings.StatusBarOpen): ApplyStatusBar(); break;
                 case nameof(AppSettings.ReadOnly): ApplyReadOnlyBadge(); UpdateTitle(); break;
                 case nameof(AppSettings.WordCountMethod): lastTocJson = null; break;
-                case nameof(AppSettings.RecentFiles): FillRecent(); break;
-                case nameof(AppSettings.RecentFolders): FillRecentFolders(); break;
-                case nameof(AppSettings.FavoritePaths): FillFavorites(); break;
-                case nameof(AppSettings.Language): Loc.Apply(settings.Language); ApplyStrings(); BuildMenus(); UpdateTitle(); _ = PostContextMenuStrings(); break;
+                case nameof(AppSettings.RecentFiles): FillRecent(); if (homeVisible) _ = RefreshHomeAsync(); break;
+                case nameof(AppSettings.RecentFolders): FillRecentFolders(); if (homeVisible) _ = RefreshHomeAsync(); break;
+                case nameof(AppSettings.FavoritePaths): FillFavorites(); if (homeVisible) _ = RefreshHomeAsync(); break;
+                case nameof(AppSettings.Language): Loc.Apply(settings.Language); ApplyStrings(); BuildMenus(); UpdateTitle(); _ = PostContextMenuStrings(); _ = RefreshHomeAsync(); break;
                 case nameof(AppSettings.Shortcuts): BuildMenus(); _ = PostShortcutMap(); break;
             }
         });

@@ -24,6 +24,7 @@ public static class Loc
         ["RecentFolders"] = "Recent folders", ["ParentFolder"] = "Parent folder", ["OpenAsRoot"] = "Open as sidebar root",
         ["Favorites"] = "Favorites", ["AddFavorite"] = "Add to favorites", ["RemoveFavorite"] = "Remove from favorites", ["ClearFavorites"] = "Clear favorites",
         ["NoRecent"] = "(none)", ["ClearRecent"] = "Clear list", ["Save"] = "Save", ["SaveAs"] = "Save as…", ["ExportHtml"] = "Export HTML…",
+        ["Home"] = "Home", ["HomeOnEmptyTab"] = "Show Home in an empty tab", ["HomeRecentFiles"] = "Recent files",
         ["ShareHedgeDoc"] = "Share to HedgeDoc…", ["Settings"] = "Settings…", ["CloseTab"] = "Close tab", ["Exit"] = "Exit",
         ["Edit"] = "Edit", ["Find"] = "Find…", ["FindNext"] = "Find next", ["FindPrevious"] = "Find previous", ["SelectAll"] = "Select all",
         ["Undo"] = "Undo", ["Redo"] = "Redo", ["Cut"] = "Cut", ["Copy"] = "Copy", ["Paste"] = "Paste",

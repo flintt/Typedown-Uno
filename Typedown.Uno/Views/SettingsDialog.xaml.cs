@@ -102,6 +102,7 @@ public sealed partial class SettingsDialog : ContentDialog
         FolderRow("StartupFolder", () => settings.StartupFolder, v => settings.StartupFolder = v);
         Toggle("OpenFilesInNewTab", settings.OpenFilesInNewTab, v => settings.OpenFilesInNewTab = v);
         Toggle("AlwaysShowTabBar", settings.AlwaysShowTabBar, v => settings.AlwaysShowTabBar = v);
+        Toggle("HomeOnEmptyTab", settings.HomeOnEmptyTab, v => settings.HomeOnEmptyTab = v);
         Toggle("StatusBar", settings.StatusBarOpen, v => settings.StatusBarOpen = v);
         Toggle("LocalAutomation", settings.AllowLocalAutomation, v => settings.AllowLocalAutomation = v, "LocalAutomationDescription");
         Toggle("HighlightAutomationChanges", settings.HighlightAutomationChanges, v => settings.HighlightAutomationChanges = v, "HighlightAutomationChangesDescription");

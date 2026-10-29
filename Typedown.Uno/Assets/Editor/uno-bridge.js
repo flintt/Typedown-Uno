@@ -105,6 +105,96 @@
         OpenToolTip: function (a) { showToolTip(a); }
     };
 
+    // Home stays in this page: on Linux the editor is a native WebKit child above XAML overlays.
+    // All path labels are text nodes, and the host validates a chosen path against its own recent/favorite lists.
+    var homeOverlay = null, homeVersion = -1;
+    function homeAction(action, path) {
+        send(JSON.stringify({ type: 'message', name: 'HomeAction', args: { action: action, path: path || null } }));
+    }
+    function updateHome(args) {
+        if (!args || typeof args.version !== 'number' || args.version < homeVersion) return;
+        homeVersion = args.version;
+        if (!args.show) {
+            if (homeOverlay) {
+                if (homeOverlay.contains(document.activeElement)) document.activeElement.blur();
+                homeOverlay.style.display = 'none';
+            }
+            return;
+        }
+        var firstOpen = !homeOverlay || homeOverlay.style.display === 'none';
+        var hadFocus = homeOverlay && homeOverlay.contains(document.activeElement);
+        if (!homeOverlay) {
+            homeOverlay = document.createElement('main');
+            homeOverlay.id = 'uno-home';
+            homeOverlay.style.cssText = 'position:fixed;inset:0;z-index:90000;overflow:auto;box-sizing:border-box;' +
+                'background:var(--editorBgColor,#f9f9f9);color:var(--editorColor,#222);font:14px system-ui,sans-serif;';
+            document.body.appendChild(homeOverlay);
+        }
+        homeOverlay.style.display = 'block';
+        homeOverlay.replaceChildren();
+        var content = document.createElement('div');
+        content.style.cssText = 'max-width:980px;margin:0 auto;padding:clamp(28px,7vh,72px) 32px 64px;';
+        homeOverlay.appendChild(content);
+        var title = document.createElement('h1');
+        title.textContent = args.strings.title;
+        title.style.cssText = 'font-size:32px;font-weight:600;margin:0 0 26px;letter-spacing:-.03em;';
+        content.appendChild(title);
+        var actions = document.createElement('div');
+        actions.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;margin-bottom:36px;';
+        content.appendChild(actions);
+        function quick(label, action) {
+            var button = document.createElement('button');
+            button.type = 'button'; button.textContent = label;
+            button.style.cssText = 'min-width:145px;padding:12px 18px;border-radius:8px;border:1px solid var(--floatBorderColor,#ccc);' +
+                'background:var(--itemBgColor,#fff);color:var(--editorColor,#222);font:inherit;text-align:left;cursor:pointer;';
+            button.addEventListener('click', function () { homeAction(action); });
+            actions.appendChild(button);
+            return button;
+        }
+        var first = quick(args.strings.newFile, 'new');
+        quick(args.strings.openFile, 'openFile');
+        quick(args.strings.openFolder, 'openFolder');
+        var groups = document.createElement('div');
+        groups.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:24px;';
+        content.appendChild(groups);
+        function section(label, items, action) {
+            var group = document.createElement('section');
+            var heading = document.createElement('h2');
+            heading.textContent = label;
+            heading.style.cssText = 'font-size:15px;font-weight:600;margin:0 0 12px;';
+            group.appendChild(heading);
+            if (!items.length) {
+                var empty = document.createElement('p');
+                empty.textContent = args.strings.empty;
+                empty.style.cssText = 'opacity:.55;margin:0;';
+                group.appendChild(empty);
+            }
+            items.forEach(function (item) {
+                var button = document.createElement('button');
+                button.type = 'button';
+                button.title = item.path;
+                button.style.cssText = 'display:block;width:100%;padding:9px 10px;margin-bottom:3px;border:0;border-radius:6px;' +
+                    'background:transparent;color:var(--editorColor,#222);font:inherit;text-align:left;cursor:pointer;';
+                var name = document.createElement('span');
+                name.textContent = (item.folder ? '\uD83D\uDCC1 ' : '\uD83D\uDCC4 ') + item.name;
+                name.style.cssText = 'display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+                var path = document.createElement('small');
+                path.textContent = item.path;
+                path.style.cssText = 'display:block;opacity:.55;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+                button.appendChild(name); button.appendChild(path);
+                button.addEventListener('mouseenter', function () { button.style.background = 'var(--itemBgColor,#eee)'; });
+                button.addEventListener('mouseleave', function () { button.style.background = 'transparent'; });
+                button.addEventListener('click', function () { homeAction(action, item.path); });
+                group.appendChild(button);
+            });
+            groups.appendChild(group);
+        }
+        section(args.strings.recentFiles, args.recentFiles || [], 'recentFile');
+        section(args.strings.recentFolders, args.recentFolders || [], 'recentFolder');
+        section(args.strings.favorites, args.favorites || [], 'favorite');
+        if (firstOpen || hadFocus) setTimeout(function () { first.focus(); }, 0);
+    }
+
     // In-page find bar. Keyboard focus cannot be moved from the native web view to the host window on Linux/macOS,
     // so the find UI lives in the page and drives the editor's own Search/Find handlers directly.
     var findBar = null, findInput = null, findCount = null, findRow = null, replaceRow = null, replaceInput = null;
@@ -662,6 +752,7 @@
                 return;
             }
             if (msg && msg.name === 'ContextMenuStrings') { menuStrings = Object.assign(menuStrings, msg.args || {}); return; }
+            if (msg && msg.name === 'HomeState') { updateHome(msg.args); return; }
             if (msg && msg.name === 'FindStrings') {
                 findStrings = Object.assign(findStrings, msg.args || {});
                 if (findInput) findInput.placeholder = findStrings.find;
